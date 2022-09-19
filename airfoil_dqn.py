@@ -18,7 +18,8 @@ from torch import optim
 
 # TODO: These are misnomers
 from airfoilgcnn import AirfoilGCNN, NodeRemovalNet
-from Env2DAirfoil import Env2DAirfoil
+#from Env2DAirfoil import Env2DAirfoil
+from MultiSnapshotEnv2DAirfoil import MultiSnapshotEnv2DAirfoil as Env2DAirfoil
 
 from itertools import count
 
@@ -33,6 +34,7 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
 SEED = 1370
+#SEED = 137*137
 torch.manual_seed(SEED)
 random.seed(SEED)
 np.random.seed(SEED)
@@ -50,21 +52,34 @@ else:
 
 #torch.set_default_tensor_type("float")
 
-RESTART = False
+RESTART = True
 
 # Hyperparameters to tune
+#BATCH_SIZE = 64
 BATCH_SIZE = 64
 GAMMA = 1.
 EPS_START = 1.
 EPS_END = 0.01
 EPS_DECAY = 100000
+#EPS_DECAY = 10000
 TARGET_UPDATE = 5
 LEARNING_RATE = 0.0005
 
 # Prefix used for saving results
 #PREFIX = 'ys930_'
+#PREFIX = 'ys930_5000K_'
+#PREFIX = 'ys930_50K_'
+#PREFIX = 'ys930_multi_'
+#PREFIX = 'ys930_691K_'
+
+PREFIX = 'ys930_1386_'
+NEW_PREFIX = 'restart_ys930_1386_'
+
+#PREFIX = 'lwk80120k25_13_'
+
 #PREFIX = 'ag11_'
-PREFIX = 'cylinder_'
+#PREFIX = 'cylinder_'
+#PREFIX = 'cylinder_multi_'
 #PREFIX = 'square_'
 
 # Save directory
@@ -78,15 +93,20 @@ save_dir += '/' + PREFIX[:-1]
 # Automatically add analysis scripts with updated prefix?
 
 # Set up environment
-with open("./configs/{}.yaml".format(PREFIX[:-1]), 'r') as stream:
+with open("./configs/{}.yaml".format(PREFIX.split("_")[0]), 'r') as stream:
     flow_config = yaml.safe_load(stream)
 env = Env2DAirfoil(flow_config)
+env.set_plot_dir(save_dir)
+env.plot_state()
 
 # Hold on to ground truth values
 flow_config['agent_params']['gt_drag'] = env.gt_drag
 flow_config['agent_params']['gt_time'] = env.gt_time
-flow_config['agent_params']['u'] = env.u.copy(deepcopy=True)
-flow_config['agent_params']['p'] = env.p.copy(deepcopy=True)
+print(env.gt_drag, env.gt_time)
+#flow_config['agent_params']['u'] = env.u.copy(deepcopy=True)
+#flow_config['agent_params']['p'] = env.p.copy(deepcopy=True)
+flow_config['agent_params']['u'] = [u.copy(deepcopy=True) for u in env.original_u]
+flow_config['agent_params']['p'] = [p.copy(deepcopy=True) for p in env.original_p]
 
 n_actions = env.action_space.n
 print("N CLOSEST: {}".format(n_actions))
@@ -122,7 +142,7 @@ class ReplayMemory(object):
 
 eps_threshs = []
 if(RESTART):
-    eps_threshs = list(np.load("./{}/{}eps.npy".format(save_dir, OLD_PREFIX)))
+    eps_threshs = list(np.load("./{}/{}eps.npy".format(save_dir, PREFIX)))
 
 def select_action(state):
     global steps_done
@@ -144,7 +164,7 @@ def select_action(state):
 
 losses = []
 if(RESTART):
-    losses = list(np.load("./{}/{}losses.npy".format(save_dir, OLD_PREFIX)))
+    losses = list(np.load("./{}/{}losses.npy".format(save_dir, PREFIX)))
 
 if(not RESTART):
     steps_done = 0
@@ -181,10 +201,10 @@ def optimize_model(optimizer):
             output = policy_net_1(data)
         except RuntimeError:
             print("\n\n")
-            print(data)
-            print(data.x)
-            print(data.edge_index)
-            print(data.edge_attr)
+            #print(data)
+            #print(data.x)
+            #print(data.edge_index)
+            #print(data.edge_attr)
             print("\n\n")
             raise
     state_action_values = output[:,action_batch[:,0]].diag()
@@ -203,10 +223,10 @@ def optimize_model(optimizer):
             output = policy_net_2(data).max(1)[0]
         except RuntimeError:
             print("\n\n")
-            print(data)
-            print(data.x)
-            print(data.edge_index)
-            print(data.edge_attr)
+            #print(data)
+            #print(data.x)
+            #print(data.edge_index)
+            #print(data.edge_attr)
             print("\n\n")
             raise
     try:
@@ -235,9 +255,9 @@ def _movingaverage(values, window):
     return sma
 
 # Plot original mesh for comparison...
-plot(env.flow_solver.mesh)
-plt.savefig("original_mesh.png")#, figsize=(20,16))
-plt.close()
+#plot(env.flow_solver.mesh)
+#plt.savefig("original_mesh.png")#, figsize=(20,16))
+#plt.close()
 
 # Initialize replay memory
 memory = ReplayMemory(10000)
@@ -246,7 +266,7 @@ num_episodes = flow_config['agent_params']['episodes']
 ep_reward = []
 
 if(RESTART):
-    ep_reward = list(np.load("./{}/{}reward.npy".format(save_dir, OLD_PREFIX)))
+    ep_reward = list(np.load("./{}/{}reward.npy".format(save_dir, PREFIX)))
 
 # Timing arrays
 action_times = []
@@ -258,23 +278,30 @@ optimize_times = []
 all_actions = []
 all_rewards = []
 if(RESTART):
-    all_actions = list(np.load("./{}/{}actions.npy".format(save_dir, OLD_PREFIX), allow_pickle=True))
-    all_rewards = list(np.load("./{}/{}rewards.npy".format(save_dir, OLD_PREFIX), allow_pickle=True))
+    all_actions = list(np.load("./{}/{}actions.npy".format(save_dir, PREFIX), allow_pickle=True))
+    all_rewards = list(np.load("./{}/{}rewards.npy".format(save_dir, PREFIX), allow_pickle=True))
 
 # Prime policy nets
-policy_net_1.set_num_nodes(flow_config['agent_params']['N_closest'])
-policy_net_2.set_num_nodes(flow_config['agent_params']['N_closest'])
+try:
+    NUM_INPUTS = 2 + 3 * int(flow_config['agent_params']['solver_steps']/flow_config['agent_params']['save_steps'])
+except:
+    NUM_INPUTS = 5
+policy_net_1.set_num_nodes(NUM_INPUTS)
+policy_net_2.set_num_nodes(NUM_INPUTS)
 
 # Load policy net parameters
 if(RESTART):
     policy_net_1.load_state_dict(torch.load(
-              "./trained_dqns/{}policy_net_1.pt".format(OLD_PREFIX)))
+              "./{}/{}policy_net_1.pt".format(save_dir, PREFIX)))
     policy_net_2.load_state_dict(torch.load(
-              "./trained_dqns/{}policy_net_2.pt".format(OLD_PREFIX)))
+              "./{}/{}policy_net_2.pt".format(save_dir, PREFIX)))
     print("SUCCESSFULLY LOADED POLICY NETS")
 
 optimizer = optimizer_fn(policy_net_1.parameters())
 first = True
+
+if(RESTART):
+    PREFIX = NEW_PREFIX
 
 start_ep = len(ep_reward) if(RESTART) else 0
 for episode in range(start_ep, num_episodes):
