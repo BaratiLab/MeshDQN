@@ -50,6 +50,9 @@ class FlowSolver(object):
         # Using very simple IPCS solver
         mu = Constant(flow_params['mu'])              # dynamic viscosity
         rho = Constant(flow_params['rho'])            # density
+
+        # If we're not deploying we don't need to fully remesh and update solver
+        self.DEPLOY = False
         
         # Load airfoil mesh
         mesh_file = geometry_params['mesh']
@@ -225,6 +228,11 @@ class FlowSolver(object):
 
         return surfaces, bnd, airfoil_bnd, inflow, outflow
 
+
+    def deploy(self):
+        self.DEPLOY = True
+
+
     def remesh(self, mesh):
         # Set mesh to new mesh
         self.mesh = mesh
@@ -260,76 +268,79 @@ class FlowSolver(object):
         n  = FacetNormal(self.mesh)
         f  = Constant((0, 0))
 
-        epsilon = lambda u :sym(nabla_grad(u))
-        sigma = lambda u, p: 2*mu*epsilon(u) - p*Identity(2)
+        if(self.DEPLOY):
+            epsilon = lambda u :sym(nabla_grad(u))
+            sigma = lambda u, p: 2*mu*epsilon(u) - p*Identity(2)
 
-        # Reuse previous parameters
-        mu = self.viscosity
-        rho = self.density
-        dt = self.dt
+            # Reuse previous parameters
+            mu = self.viscosity
+            rho = self.density
+            dt = self.dt
 
-        F1 = (rho*dot((u - u_n) / dt, v)*dx
-              + rho*dot(dot(u_n, nabla_grad(u_n)), v)*dx
-              + inner(sigma(U, p_n), epsilon(v))*dx
-              + dot(p_n*n, v)*ds - dot(mu*nabla_grad(U)*n, v)*ds
-              - dot(f, v)*dx)
+            F1 = (rho*dot((u - u_n) / dt, v)*dx
+                  + rho*dot(dot(u_n, nabla_grad(u_n)), v)*dx
+                  + inner(sigma(U, p_n), epsilon(v))*dx
+                  + dot(p_n*n, v)*ds - dot(mu*nabla_grad(U)*n, v)*ds
+                  - dot(f, v)*dx)
 
-        a1, L1 = lhs(F1), rhs(F1)
+            a1, L1 = lhs(F1), rhs(F1)
 
-        # Define variational problem for step 2
-        a2 = dot(nabla_grad(p), nabla_grad(q))*dx
-        L2 = dot(nabla_grad(p_n), nabla_grad(q))*dx - (1/dt)*div(u_)*q*dx
+            # Define variational problem for step 2
+            a2 = dot(nabla_grad(p), nabla_grad(q))*dx
+            L2 = dot(nabla_grad(p_n), nabla_grad(q))*dx - (1/dt)*div(u_)*q*dx
 
-        # Define variational problem for step 3
-        a3 = dot(u, v)*dx
-        L3 = dot(u_, v)*dx - dt*dot(nabla_grad(p_ - p_n), v)*dx
+            # Define variational problem for step 3
+            a3 = dot(u, v)*dx
+            L3 = dot(u_, v)*dx - dt*dot(nabla_grad(p_ - p_n), v)*dx
 
-        # Inflow boundary condition
-        bcu_inlet = DirichletBC(V, self.inflow_profile, surfaces, 2)
-        bcp_outflow = DirichletBC(Q, 0, outflow)
+            # Inflow boundary condition
+            bcu_inlet = DirichletBC(V, self.inflow_profile, surfaces, 2)
+            bcp_outflow = DirichletBC(Q, 0, outflow)
 
-        # No slip
-        bcu_noslip = DirichletBC(V, (0,0), bnd)
-        bcu_airfoil_noslip = DirichletBC(V, (0,0), airfoil_bnd)
+            # No slip
+            bcu_noslip = DirichletBC(V, (0,0), bnd)
+            bcu_airfoil_noslip = DirichletBC(V, (0,0), airfoil_bnd)
 
-        # All bcs objects togets
-        bcu = [bcu_inlet, bcu_airfoil_noslip, bcu_noslip]
-        #bcp = [bcu_inlet, bcp_outflow]
-        bcp = [bcp_outflow]
+            # All bcs objects togets
+            bcu = [bcu_inlet, bcu_airfoil_noslip, bcu_noslip]
+            #bcp = [bcu_inlet, bcp_outflow]
+            bcp = [bcp_outflow]
 
-        As = [Matrix() for i in range(3)]
-        bs = [Vector() for i in range(3)]
+            As = [Matrix() for i in range(3)]
+            bs = [Vector() for i in range(3)]
 
-        # Assemble matrices
-        assemblers = [SystemAssembler(a1, L1, bcu),
-                      SystemAssembler(a2, L2, bcp),
-                      SystemAssembler(a3, L3, bcu)]
+            # Assemble matrices
+            assemblers = [SystemAssembler(a1, L1, bcu),
+                          SystemAssembler(a2, L2, bcp),
+                          SystemAssembler(a3, L3, bcu)]
 
-        # Apply bcs to matrices (this is done once)
-        for a, A in zip(assemblers, As):
-            a.assemble(A)
+            # Apply bcs to matrices (this is done once)
+            for a, A in zip(assemblers, As):
+                a.assemble(A)
 
-        # Chose between direct and iterative solvers
-        if self.solver_type == 'lu':
-            solvers = list(map(lambda x: LUSolver("mumps"), range(3)))
-        else:
-            solvers = [KrylovSolver('bicgstab', 'hypre_amg'),  # Very questionable preconditioner
-                       KrylovSolver('cg', 'hypre_amg'),
-                       KrylovSolver('cg', 'hypre_amg')]
+            # Chose between direct and iterative solvers
+            if self.solver_type == 'lu':
+                solvers = list(map(lambda x: LUSolver("mumps"), range(3)))
+            else:
+                solvers = [KrylovSolver('bicgstab', 'hypre_amg'),  # Very questionable preconditioner
+                           KrylovSolver('cg', 'hypre_amg'),
+                           KrylovSolver('cg', 'hypre_amg')]
 
-        # Set matrices for once, likewise solver don't change in time
-        for s, A in zip(solvers, As):
-            s.set_operator(A)
+            # Set matrices for once, likewise solver don't change in time
+            for s, A in zip(solvers, As):
+                s.set_operator(A)
 
-            #if(self.solver_type == "lu"):
-            #    s.parameters['reuse_factorization'] = True
+                #if(self.solver_type == "lu"):
+                #    s.parameters['reuse_factorization'] = True
 
-        # Things to remeber for evolution
-        self.gtime = 0 # Reset external clock
+            # Things to remeber for evolution
+            self.gtime = 0 # Reset external clock
 
-        self.solvers = solvers
-        self.assemblers = assemblers
-        self.bs = bs
+            self.solvers = solvers
+            self.assemblers = assemblers
+
+            self.bs = bs
+
         self.u_, self.u_n = u_, u_n
         self.p_, self.p_n = p_, p_n
 
@@ -380,8 +391,8 @@ class FlowSolver(object):
         lift = self.lift_probe.sample(u_n, p_n)
         self.accumulated_lift.append(lift)
 
-        if(np.isclose((self.gtime+0.000001)%(100*self.dt(0)), 0, atol=1e-5)):
-            print("TIME: {0:.4f}s \t DRAG: {1:.4f}\t LIFT: {2:.4f}".format(self.gtime, drag, lift))
+        #if(np.isclose((self.gtime+0.000001)%(100*self.dt(0)), 0, atol=1e-5)):
+        #    print("TIME: {0:.4f}s \t DRAG: {1:.4f}\t LIFT: {2:.4f}".format(self.gtime, drag, lift))
 
 
         # Share with the world

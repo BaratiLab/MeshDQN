@@ -76,7 +76,7 @@ class NodeRemovalNet(torch.nn.Module):
         
     def set_num_nodes(self, initial_num_nodes):
         self.initial_num_nodes = initial_num_nodes
-        self.conv1 =  SAGEConv(5, self.conv_width).to(device)
+        self.conv1 =  SAGEConv(self.initial_num_nodes, self.conv_width).to(device)
 
     def set_removable(self, removable):
         self.removable = removable
@@ -88,32 +88,49 @@ class NodeRemovalNet(torch.nn.Module):
         returns: Predicted normalized drag value
         """
         x, edge_index, batch = data.x.float(), data.edge_index, data.batch
+        #print(x.shape)
 
         x = F.relu(self.conv1(x, edge_index))
+        #print(x.shape)
         x, edge_index, _, batch, _, _ = self.pool1(x, edge_index, None, batch)
+        #print(x.shape)
         x1 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
 
         x = F.relu(self.conv2(x, edge_index))
+        #print(x.shape)
         x, edge_index, _, batch, _, _ = self.pool2(x, edge_index, None, batch)
+        #print(x.shape)
         x2 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
         
-        x = F.relu(self.conv3(x, edge_index))
-        x, edge_index, _, batch, _, _ = self.pool3(x, edge_index, None, batch)
-        x3 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
+        #x = F.relu(self.conv3(x, edge_index))
+        #print(x.shape)
+        #x, edge_index, _, batch, _, _ = self.pool3(x, edge_index, None, batch)
+        #print(x.shape)
+        #x3 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
 
         x = F.relu(self.conv4(x, edge_index))
+        #print(x.shape)
         x, edge_index, _, batch, _, _ = self.pool4(x, edge_index, None, batch)
+        #print(x.shape)
         x4 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
 
         x = F.relu(self.conv5(x, edge_index))
+        #print(x.shape)
         x, edge_index, _, batch, _, _ = self.pool5(x, edge_index, None, batch)
+        #print(x.shape)
         x5 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
 
-        x = F.relu(self.conv6(x, edge_index))
-        x, edge_index, _, batch, _, _ = self.pool6(x, edge_index, None, batch)
-        x6 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
+        #x = F.relu(self.conv6(x, edge_index))
+        #print(x.shape)
+        #x, edge_index, _, batch, _, _ = self.pool6(x, edge_index, None, batch)
+        #print(x.shape)
+        #x6 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
 
-        x = x1+x2+x3+x4+x5+x6
+        #print(x1.shape, x2.shape, x3.shape, x4.shape, x5.shape, x6.shape)
+        #raise
+
+        #x = x1+x2+x3+x4+x5+x6
+        x = x1+x2+x4+x5
 
         if(embedding):
             return x

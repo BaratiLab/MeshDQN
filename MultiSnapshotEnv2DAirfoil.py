@@ -6,6 +6,7 @@ import yaml
 
 from dolfin import *
 from matplotlib import pyplot as plt
+from matplotlib.lines import Line2D
 
 from airfoilgcnn import AirfoilGCNN
 
@@ -21,6 +22,10 @@ from torch_geometric.data import Data
 import os
 from shapely.geometry import Polygon, Point
 
+#from multiprocessing import pool
+from joblib import Parallel, delayed
+from pathos.multiprocessing import ProcessingPool as Pool
+
 if(torch.cuda.is_available()):
     print("USING GPU")
     device = torch.device("cuda:0")
@@ -29,13 +34,13 @@ else:
     device = torch.device("cpu")
 #device = torch.device("cpu")
 
-class Env2DAirfoil(Env):
+class MultiSnapshotEnv2DAirfoil(Env):
     """
         Environment to optimize mesh around a 2D airfoil
     """
 
     def __init__(self, config):
-        super(Env2DAirfoil, self).__init__()
+        super(MultiSnapshotEnv2DAirfoil, self).__init__()
 
         # Define flow solver
         self.flow_solver = FlowSolver(**config['flow_config'])
@@ -67,38 +72,52 @@ class Env2DAirfoil(Env):
         self.removed_coordinates = []
         self.do_nothing_offset = 0
 
-        # Solver Parameters
-        self.gt_drag = config['agent_params']['gt_drag']
-        self.gt_time = config['agent_params']['gt_time']
+        # Agent Parameters
+        self.gt_drag = np.array(config['agent_params']['gt_drag'])
+        self.gt_time = np.array(config['agent_params']['gt_time'])
         self.u = config['agent_params']['u']
         self.p = config['agent_params']['p']
         self.original_u = config['agent_params']['u']
         self.original_p = config['agent_params']['p']
+        self.save_steps = config['agent_params']['save_steps']
+        self.goal_vertices = config['agent_params']['goal_vertices']
 
-        # For putting vertices back after smoothing
-        self.b_coords = self.flow_solver.bmesh.coordinates()
+        if(not(isinstance(self.u, int))):
+            self.u = [u.copy(deepcopy=True) for u in config['agent_params']['u']]
+            self.p = [p.copy(deepcopy=True) for p in config['agent_params']['p']]
+            self.original_u = [u.copy(deepcopy=True) for u in config['agent_params']['u']]
+            self.original_p = [p.copy(deepcopy=True) for p in config['agent_params']['p']]
 
+        self.POLYGON = False
         self.out_of_vertices = False
-
         self.reset()
 
 
     def reset(self):
-        drags, lifts = [], []
-        if((self.gt_drag == -1) and (self.gt_time == -1)):
+
+        # Turn ground truths into a list
+        if(self.gt_drag.shape == ()):
+            self.gt_drag = np.array([self.gt_drag])
+        if(self.gt_time.shape == ()):
+            self.gt_time = np.array([self.gt_time])
+
+        # Run Rimulation if necessary
+        if((self.gt_drag[0] == -1) and (self.gt_time[0] == -1)):
+            self.gt_drag, self.gt_lift, self.original_u, self.original_p, self.p, self.u = ([] for i in range(6))
             print("CALCULATING INITIAL VALUE...")
             start = time.time()
             for i in tqdm(range(self.solver_steps)):
                 u, p, drag, lift = self.flow_solver.evolve()
-                drags.append(drag)
-                lifts.append(lift)
-            self.gt_drag = np.mean(drags[-1])
-            self.gt_lift = lifts[-1]
-            self.gt_time = time.time() - start
-            self.u = u
-            self.p = p
-            self.original_u = u
-            self.original_p = p
+
+                if((i+1)%self.save_steps == 0):
+                    #print("\n\nSAVING AT STEP: {}\n\n".format(i+1))
+                    self.gt_drag.append(drag)
+                    self.gt_lift.append(lift)
+                    self.original_u.append(u.copy(deepcopy=True))
+                    self.original_p.append(p.copy(deepcopy=True))
+                    self.u.append(u.copy(deepcopy=True))
+                    self.p.append(p.copy(deepcopy=True))
+
 
         # Get and save velocities
         self._calculate_velocities()
@@ -111,27 +130,77 @@ class Env2DAirfoil(Env):
         self._get_distance_lookup()
 
 
-    def _snap_boundaries(self):
-        print(self.flow_solver.mesh.coordinates())
+    def plot_state(self, title="{}", filename="initial_state.pdf"):
+        state = self.get_state()
+        mesh = self.flow_solver.mesh
+        closest = self.n_closest
+        #print(closest)
+        
+        edges = []
+        coords = mesh.coordinates()
+        for c in mesh.cells():
+            edges.append([c[0], c[1]])
+            edges.append([c[0], c[2]])
+            edges.append([c[1], c[2]])
+        
+        fig, ax = plt.subplots(figsize=(10,5))
+        
+        colors = np.array(['r', 'k'])
+        removable = np.array(self.flow_solver.removable).astype(int)
+        ax.scatter(coords[:,0], coords[:,1], color=colors[removable], s=6, zorder=1)
+        for e in edges:
+            ax.plot([coords[e[0]][0], coords[e[1]][0]],
+                    [coords[e[0]][1], coords[e[1]][1]],
+                    color="#888888", lw=0.75, zorder=0)
+            
+        for selected_coord in self.coord_map.values():
+            ax.scatter(coords[selected_coord][0], coords[selected_coord][1], color='b', s=6)
+        
+        edges = state.edge_index
+        for e in range(edges.shape[1]):
+            p1 = coords[self.coord_map[int(edges[0][e])]]
+            p2 = coords[self.coord_map[int(edges[1][e])]]
+            ax.plot([p1[0], p2[0]], [p1[1], p2[1]], color='b', lw=0.75)
+        
+                
+        custom_handles = [
+                Line2D([0],[0], color='r', marker='o', lw=0, markersize=3),
+                Line2D([0],[0], color='k', marker='o', lw=0.5, markersize=3),
+                Line2D([0],[0], color='b', marker='o', lw=0.5, markersize=3),
+        ]
+        ax.legend(custom_handles, ['Not Removable', 'Removable - Not in State', 'Removable - In State'    ],
+                  bbox_to_anchor=[0.05,0.03,0.93,0], ncol=3, fontsize=12)
+        
+        
+        ax.set_title(title.format(self.N_CLOSEST), fontsize=18, y=0.975)
+        ax.axes.xaxis.set_visible(False)
+        ax.axes.yaxis.set_visible(False)
+        ax.set_axis_off()
+        plt.savefig("./{}/{}.png".format(self.plot_dir, filename), bbox_inches='tight')
 
 
     def _get_distance_lookup(self):
         removable = np.array(self.flow_solver.removable, dtype=int)
         coords = self.flow_solver.mesh.coordinates()
-        not_removable = np.argwhere(-(np.array(self.flow_solver.removable)-1))[:,0]
-        boundary_coords = coords[not_removable]
-        airfoil_coords = boundary_coords[
-                np.logical_and((boundary_coords[:,0] > -0.5) ,
-                np.logical_and((boundary_coords[:,0] < 3),
-                np.logical_and((boundary_coords[:,1] > -0.5),
-                (boundary_coords[:,1] < 0.5))))
-        ]
-        self.polygon = Polygon(airfoil_coords)
+        if(not self.POLYGON):
+            not_removable = np.argwhere(-(np.array(self.flow_solver.removable)-1))[:,0]
+            boundary_coords = coords[not_removable]
+            airfoil_coords = boundary_coords[
+                    np.logical_and((boundary_coords[:,0] > -0.5) ,
+                    np.logical_and((boundary_coords[:,0] < 3),
+                    np.logical_and((boundary_coords[:,1] > -0.5),
+                    (boundary_coords[:,1] < 0.5))))
+            ]
+            self.polygon = Polygon(airfoil_coords)
+            self.POLYGON = True
 
-        # Precompute distances for later lookup -> This will not work with mesh smoothing as its currently implemented
-        self.distance_lookup = {}
+        # Precompute distances for later lookup 
+        #self.distance_lookup = {}
+        #for idx, coord in enumerate(coords[self.removable]):
+        #    self.distance_lookup[idx] = self.polygon.distance(Point(coord))
+        self.distance_lookup = []
         for idx, coord in enumerate(coords[self.removable]):
-            self.distance_lookup[idx] = self.polygon.distance(Point(coord))
+            self.distance_lookup.append(self.polygon.distance(Point(coord)))
 
 
     def get_state(self):
@@ -140,11 +209,8 @@ class Env2DAirfoil(Env):
 
         # calculate N closest point to the airofil
         self._n_closest()
-        #if(self.out_of_vertices):
-        #    return False
 
         # Only retain edge if its the N-closest 
-        nstart = time.time()
         append_times, check_times, lookup_times = [], [], []
 
         # Need to remove this somehow for mesh smoothing... reintroduce vertex index?
@@ -177,9 +243,11 @@ class Env2DAirfoil(Env):
 
         # Stack and create data object
         edge_index = torch.LongTensor(edge_index).T
-        x = torch.Tensor(self.flow_solver.mesh.coordinates()[self.n_closest])
-        x = torch.hstack((x, torch.Tensor(self.velocities[self.n_closest])))
-        x = torch.hstack((x, torch.Tensor(self.pressures[self.n_closest])))
+
+        x = torch.zeros((self.N_CLOSEST, 3*self.velocities.shape[0] + 2), dtype=torch.float)
+        x[:,:2] = torch.from_numpy(self.flow_solver.mesh.coordinates()[self.n_closest])
+        x[:,2:2*self.velocities.shape[0]+2] = torch.from_numpy(self.velocities[:,self.n_closest,:].reshape(self.N_CLOSEST,-1))
+        x[:,2*self.velocities.shape[0]+2:] = torch.from_numpy(self.pressures[:,self.n_closest][:,:,0].T)
 
         return Data(x=x, edge_index=edge_index, edge_attr=edge_attr).to(device)
 
@@ -194,12 +262,10 @@ class Env2DAirfoil(Env):
         self.mesh_map = dict(zip(range(len(self.removable)), vec_lookup(self.removable)))
         coords = self.flow_solver.mesh.coordinates()
 
-        distances = []
+        # Get distances to the airfoil
         self._get_distance_lookup()
-        for idx, coord in enumerate(coords[self.removable]):
-            distances.append(self.distance_lookup[idx])
-        dist_idxs = np.argsort(distances)
-
+        dist_idxs = np.argsort(self.distance_lookup)
+        
         # Create new map between N-closest and original indices
         self.n_closest = dist_idxs[self.do_nothing_offset:self.N_CLOSEST + self.do_nothing_offset]
         if(len(self.n_closest) < self.N_CLOSEST):
@@ -243,6 +309,9 @@ class Env2DAirfoil(Env):
 
             if(self.terminal):
                 self.rew = 0.5*self.NEGATIVE_REWARD
+                #print(np.abs(np.abs(self.gt_drag - self.new_drags)/self.gt_drag) > self.threshold)
+                #print(np.abs(np.abs(self.gt_drag - self.new_drags)/self.gt_drag))
+                #print("NEW DRAGS: {}".format(self.new_drags))
                 print("ACCURACY THRESHOLD REACHED")
 
             if(broken):
@@ -279,30 +348,41 @@ class Env2DAirfoil(Env):
         '''
 
         try:
-            new_drag = self.flow_solver.drag_probe.sample(self.u, self.p)
-            new_lift = self.flow_solver.lift_probe.sample(self.u, self.p)
-            self.new_drag = new_drag
-            self.new_lift = new_lift
+            self.new_drags, self.new_lifts = [], []
+            for u, p in zip(self.u, self.p):
+                new_drag = self.flow_solver.drag_probe.sample(u, p)
+                new_lift = self.flow_solver.lift_probe.sample(u, p)
+                self.new_drags.append(new_drag)
+                self.new_lifts.append(new_lift)
         except:
             print("\n\nSAMPLING BROKE\n\n")
             return self.NEGATIVE_REWARD, True, True
 
+        self.new_drags = np.array(self.new_drags)
+        self.new_lifts = np.array(self.new_lifts)
+
         # Drag reward
-        drag_factor = np.floor(-2*np.log(0.5)/self.threshold)
-        #drag_factor = np.floor(-np.log(0.5)/self.threshold)
+        #drag_factor = -2*np.log(0.5)/self.threshold
+        drag_factor = -4*np.log(0.5)/self.threshold
         #drag_factor = 5000
-        #drag_factor = 50
-        drag_reward = 2*np.exp(-drag_factor*np.abs(self.gt_drag - new_drag)/np.abs(self.gt_drag)) - 1
+        error_val = np.linalg.norm(np.abs(self.gt_drag - self.new_drags)/np.abs(self.gt_drag))
+        drag_reward = 2*np.exp(-drag_factor*error_val) - 1
 
         # Time reward
         time_reward = (self.initial_num_node - len(self.coordinate_list)) * self.TIME_REWARD
+
+        # Accuracy threshold
+        acc_thresh = any(np.abs(np.abs(self.gt_drag - self.new_drags)/self.gt_drag) > self.threshold)
+
+        # Vertex Threshold
+        vert_thresh = len(self.flow_solver.mesh.coordinates()) < self.goal_vertices * self.initial_num_node
 
         if(drag_reward == np.nan):
             print(self.get_state())
             print("\n\nDRAG IS NAN!\n\n")
             raise
-        return drag_reward+time_reward, False, \
-               np.abs(np.abs(self.gt_drag - new_drag)/self.gt_drag) > self.threshold
+        return drag_reward+time_reward, False, acc_thresh or vert_thresh
+               #any(np.abs(np.abs(self.gt_drag - self.new_drags)/self.gt_drag) > self.threshold)
 
 
     def set_plot_dir(self, plot_dir):
@@ -363,7 +443,6 @@ class Env2DAirfoil(Env):
         editor.init_vertices(len(coords))
         editor.init_cells(len(cells))
 
-        #adding_time = time.time()
         for idx, vert in enumerate(coords):
             editor.add_vertex(idx, vert)
         for idx, c in enumerate(cells):
@@ -375,13 +454,45 @@ class Env2DAirfoil(Env):
 
 
     def _calculate_velocities(self):
-        self.velocities = np.array(list(map(lambda x: self.u(x, allow_extrapolation=True),
-                                           self.flow_solver.mesh.coordinates())))
+        self.velocities = np.array([list(map(lambda x: u(x, allow_extrapolation=True),
+                                    self.flow_solver.mesh.coordinates())) for u in self.u])
 
 
     def _calculate_pressures(self):
-        self.pressures = np.array(list(map(lambda x: self.p(x, allow_extrapolation=True),
-                                           self.flow_solver.mesh.coordinates())))[:,np.newaxis]
+        self.pressures = np.array([list(map(lambda x: p(x, allow_extrapolation=True),
+                                   self.flow_solver.mesh.coordinates())) for p in self.p])[:,:,np.newaxis]
+
+    def _interpolate(self, idx, original_u, original_p):
+    #def _interpolate(self, idx):
+        print("\n\nHERE\n\n")
+        print(idx)
+        print(original_u)
+        print(original_p)
+        mesh = Mesh(self.flow_solver.mesh)
+
+        # Interpolate to new values
+        #V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 2)
+        V_new = VectorFunctionSpace(mesh, 'Lagrange', 2)
+        #V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 3)
+        v_func = Function(V_new, degree=2)
+        v_func.set_allow_extrapolation(True)
+        v_func.interpolate(original_u.copy(deepcopy=True))
+
+        P_new = FunctionSpace(mesh, 'Lagrange', 1)
+        #P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 3)
+        p_func = Function(P_new, degree=1)
+        p_func.set_allow_extrapolation(True)
+        p_func.interpolate(original_p.copy(deepcopy=True))
+
+        # Calculate new values
+        u = v_func.copy(deepcopy=True)
+        u.set_allow_extrapolation(True)
+        self.u[idx] = u.copy(deepcopy=True)
+
+        p = p_func.copy(deepcopy=True)
+        p.set_allow_extrapolation(True)
+        self.p[idx] = p.copy(deepcopy=True)
+        #print(self.u)
 
 
     def _check_mesh(self, mesh, selected_coord):
@@ -392,39 +503,69 @@ class Env2DAirfoil(Env):
             old_mesh = Mesh(self.flow_solver.mesh)
             self.flow_solver.remesh(mesh)
 
-            # Interpolate Velocities and pressures
             try:
-                V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 3)
-                v_func = Function(V_new, degree=2)
-                v_func.set_allow_extrapolation(True)
-                v_func.interpolate(self.original_u.copy(deepcopy=True))
-
-                P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 3)
-                p_func = Function(P_new, degree=1)
-                p_func.set_allow_extrapolation(True)
-                p_func.interpolate(self.original_p.copy(deepcopy=True))
+                for idx, (original_u, original_p) in enumerate(zip(self.original_u, self.original_p)):
+                    f_u = XDMFFile("./{}/u_{}".format(self.plot_dir, idx))
+                    f_p = XDMFFile("./{}/p_{}".format(self.plot_dir, idx))
+                    f_u.write(original_u)
+                    f_u.write(original_p)
+                raise
+                Parallel(n_jobs=len(self.original_u))(delayed(self._interpolate)(idx, u, p) \
+                         for idx, (u, p) in enumerate(zip(self.original_u, self.original_p)))
+                #pool = Pool(len(self.original_u))
+                #pool.map(self._interpolate, 
+                #        [(idx) \
+                            #, u.copy(deepcopy=True),
+                         #p.copy(deepcopy=True)) \
+                #        for idx, (u, p) in enumerate(zip(self.original_u, self.original_p))])
+                #print("\n\nHERE\n\n")
+                #print(self.u)
             except RuntimeError:
+                raise
                 print("INTERPOLATION BROKE")
                 self.flow_solver.mesh = old_mesh
                 self.coordinate_list.insert(selected_coord, selected_coord)
-                return 2 # Node removal broke mesh
+            raise
 
-            try:
-                self.u = v_func.copy(deepcopy=True)
-                self.u.set_allow_extrapolation(True)
-                self._calculate_velocities()
+            # Interpolate Velocities and pressures... somehow all the same?
+            #for idx, (original_u, original_p) in enumerate(zip(self.original_u, self.original_p)):
+            #    try:
+            #        V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 2)
+            #        #V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 3)
+            #        v_func = Function(V_new, degree=2)
+            #        v_func.set_allow_extrapolation(True)
+            #        v_func.interpolate(original_u.copy(deepcopy=True))
 
-                self.p = p_func.copy(deepcopy=True)
-                self.p.set_allow_extrapolation(True)
-                self._calculate_pressures()
-            except RuntimeError:
-                print("CALCULATION BROKE")
-                self.flow_solver.mesh = old_mesh
-                self.coordinate_list.insert(selected_coord, selected_coord)
-                return 2 # Node removal broke mesh
+            #        P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 1)
+            #        #P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 3)
+            #        p_func = Function(P_new, degree=1)
+            #        p_func.set_allow_extrapolation(True)
+            #        p_func.interpolate(original_p.copy(deepcopy=True))
+            #    except RuntimeError:
+            #        print("INTERPOLATION BROKE")
+            #        self.flow_solver.mesh = old_mesh
+            #        self.coordinate_list.insert(selected_coord, selected_coord)
+            #        return 2 # Node removal broke mesh
 
-            del v_func
-            del p_func
+            #    try:
+            #        u = v_func.copy(deepcopy=True)
+            #        u.set_allow_extrapolation(True)
+            #        self.u[idx] = u.copy(deepcopy=True)
+
+            #        p = p_func.copy(deepcopy=True)
+            #        p.set_allow_extrapolation(True)
+            #        self.p[idx] = p.copy(deepcopy=True)
+            #    except RuntimeError:
+            #        print("CALCULATION BROKE")
+            #        self.flow_solver.mesh = old_mesh
+            #        self.coordinate_list.insert(selected_coord, selected_coord)
+            #        return 2 # Node removal broke mesh
+
+            #    del v_func
+            #    del p_func
+
+            self._calculate_velocities()
+            self._calculate_pressures()
 
             # Update this to reflect removed vertex
             self.removable = np.argwhere(self.flow_solver.removable)[:,0]

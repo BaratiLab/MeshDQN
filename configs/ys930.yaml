@@ -10,12 +10,15 @@ flow_config:
                 solver_type: 'lu'
                 smooth: True
 agent_params:
-        #solver_steps: 5000
-        solver_steps: 50
+        solver_steps: 5000
+        #solver_steps: 500
         episodes: 1000000
+        #episodes: 20
         timesteps: 10000
         threshold: 0.001 # Final drag about 0.1% different
-        N_closest: 200
+        #threshold: 0.00075 # Final drag about 0.1% different
+        #N_closest: 200
+        N_closest: 180
         gt_drag: -1
         gt_time: -1
         u: -1
@@ -23,6 +26,20 @@ agent_params:
         do_nothing: True
         time_reward: 0.005
         smoothing: True
+        #save_steps: 5000
+        save_steps: 1000
+        #save_steps: 500
+        save_steps: 100
+        goal_vertices: 0.9
+        surrogate_threshold: 1e-5
+        surrogate_range: [10,20]
+        sur_drags: []
+        sur_lifts: []
+        mean_x: []
+        mean_y: []
+        std_x: []
+        std_y: []
+        model: None
 
 nn_params:
         layers: [128, 128, 128]

@@ -3,28 +3,25 @@ flow_config:
                 mu: 1E-3
                 rho: 1.
                 inflow: "constant"
+                #inflow: "1.0"
         geometry_params:
-                mesh: "mesh_files/airfoil_mesh_files/ag11_0.18000_triangle.xdmf"
+                mesh: "mesh_files/cylinder_mesh_files/cylinder0.1000_0.05000_triangle.xdmf"
         solver_params:
                 dt: 0.001
                 solver_type: 'lu'
-                smooth: True
 agent_params:
         solver_steps: 5000
-
-
+        #solver_steps: 5
         episodes: 100000
-        timesteps: 10000
+        timesteps: 500
         threshold: 0.001 # Final drag about 0.1% different
-        N_closest: 200
+        N_closest: 100
         gt_drag: -1
         gt_time: -1
         u: -1
         p: -1
-        do_nothing: True
-        time_reward: 0.005
-        smoothing: True
-        save_steps: 5000
+        do_nothing: False
+        time_reward: 0
 
 nn_params:
         layers: [128, 128, 128]

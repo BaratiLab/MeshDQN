@@ -20,6 +20,7 @@ from torch import optim
 from airfoilgcnn import AirfoilGCNN, NodeRemovalNet
 #from Env2DAirfoil import Env2DAirfoil
 from MultiSnapshotEnv2DAirfoil import MultiSnapshotEnv2DAirfoil as Env2DAirfoil
+#from OnlineInterpolationEnv2DAirfoil import OnlineInterpolationEnv2DAirfoil as Env2DAirfoil
 
 from itertools import count
 
@@ -32,6 +33,8 @@ from collections import namedtuple
 
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
+
+import joblib
 
 SEED = 1370
 #SEED = 137*137
@@ -52,11 +55,12 @@ else:
 
 #torch.set_default_tensor_type("float")
 
-RESTART = True
+RESTART = False
 
 # Hyperparameters to tune
 #BATCH_SIZE = 64
-BATCH_SIZE = 64
+#BATCH_SIZE = 64
+BATCH_SIZE = 32
 GAMMA = 1.
 EPS_START = 1.
 EPS_END = 0.01
@@ -72,10 +76,21 @@ LEARNING_RATE = 0.0005
 #PREFIX = 'ys930_multi_'
 #PREFIX = 'ys930_691K_'
 
-PREFIX = 'ys930_1386_'
-NEW_PREFIX = 'restart_ys930_1386_'
+#PREFIX = 'ys930_1386_'
+#PREFIX = 'ys930_1386_small_'
+#PREFIX = 'ys930_1386_small_'
+#NEW_PREFIX = 'restart_ys930_1386_small_'
+
+#PREFIX = 'ys930_1386_goal_vertices_snapshots_interp_'
+PREFIX = 'ys930_1386_parallel_interp_'
+
+#PREFIX = 'ys930_1386_online_interp_'
+#PREFIX = 'ys930_1386_long_online_interp_'
 
 #PREFIX = 'lwk80120k25_13_'
+#NEW_PREFIX = 'restart_lwk80120k25_13_'
+
+#PREFIX = 'lwk80120k25_13_small_'
 
 #PREFIX = 'ag11_'
 #PREFIX = 'cylinder_'
@@ -97,11 +112,26 @@ with open("./configs/{}.yaml".format(PREFIX.split("_")[0]), 'r') as stream:
     flow_config = yaml.safe_load(stream)
 env = Env2DAirfoil(flow_config)
 env.set_plot_dir(save_dir)
-env.plot_state()
+#env.plot_state()
+
+#env.model = joblib.load("./training_results/pretrained_model.joblib")
+#env.mean_x = np.load("./training_results/mean_x.npy")
+#env.std_x = np.load("./training_results/std_x.npy")
+#env.mean_y = np.load("./training_results/mean_y.npy")
+#env.std_y = np.load("./training_results/std_y.npy")
+#env.pretrain_surrogate()
+#joblib.dump(env.model, "./{}/{}surrogate_model.joblib".format(save_dir, PREFIX))
 
 # Hold on to ground truth values
 flow_config['agent_params']['gt_drag'] = env.gt_drag
 flow_config['agent_params']['gt_time'] = env.gt_time
+#flow_config['agent_params']['sur_drags'] = env.sur_drags
+#flow_config['agent_params']['sur_lifts'] = env.sur_lifts
+#flow_config['agent_params']['model'] = env.model
+#flow_config['agent_params']['mean_x'] = env.mean_x
+#flow_config['agent_params']['mean_y'] = env.mean_y
+#flow_config['agent_params']['std_x'] = env.std_x
+#flow_config['agent_params']['std_y'] = env.std_y
 print(env.gt_drag, env.gt_time)
 #flow_config['agent_params']['u'] = env.u.copy(deepcopy=True)
 #flow_config['agent_params']['p'] = env.p.copy(deepcopy=True)
@@ -112,8 +142,10 @@ n_actions = env.action_space.n
 print("N CLOSEST: {}".format(n_actions))
 
 # Set up for DQN
-policy_net_1 = NodeRemovalNet(n_actions+1, conv_width=256, topk=0.1).to(device).float()
-policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=256, topk=0.1).to(device).float()
+#policy_net_1 = NodeRemovalNet(n_actions+1, conv_width=256, topk=0.1).to(device).float()
+#policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=256, topk=0.1).to(device).float()
+policy_net_1 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1).to(device).float()
+policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1).to(device).float()
 optimizer_fn = lambda parameters: optim.Adam(parameters, lr=LEARNING_RATE)
 
 
@@ -315,6 +347,12 @@ for episode in range(start_ep, num_episodes):
     if(episode != 0):
         # Could maybe move ground truth calculation values to outside of reset?
         env = Env2DAirfoil(flow_config)
+        env.model = joblib.load("./training_results/pretrained_model.joblib")
+        env.mean_x = np.load("./training_results/mean_x.npy")
+        env.std_x = np.load("./training_results/std_x.npy")
+        env.mean_y = np.load("./training_results/mean_y.npy")
+        env.std_y = np.load("./training_results/std_y.npy")
+
     state = env.get_state()
     for t in tqdm(count()):
 
@@ -377,6 +415,7 @@ for episode in range(start_ep, num_episodes):
         np.save("./{}/{}rewards.npy".format(save_dir, PREFIX), np.array(all_rewards, dtype=object))
         torch.save(policy_net_1.state_dict(), "./{}/{}policy_net_1.pt".format(save_dir, PREFIX))
         torch.save(policy_net_2.state_dict(), "./{}/{}policy_net_2.pt".format(save_dir, PREFIX))
+        #joblib.dump(env.model, "./{}/{}surrogate_model.joblib".format(save_dir, PREFIX))
 
 print("ACTION: {}".format(np.mean(action_times)))
 print("STEP: {}".format(np.mean(step_times)))

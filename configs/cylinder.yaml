@@ -5,14 +5,14 @@ flow_config:
                 inflow: "constant"
         geometry_params:
                 #mesh: "mesh_files/cylinder_mesh_files/cylinder0.1000_0.05000_triangle.xdmf"
-                mesh: "mesh_files/cylinder_mesh_files/cylinder0.1000_0.15000_triangle.xdmf"
+                mesh: "mesh_files/cylinder_mesh_files/cylinder0.1000_0.05000_triangle.xdmf"
         solver_params:
                 dt: 0.001
                 solver_type: 'lu'
                 smooth: True
 agent_params:
-        #solver_steps: 5000
-        solver_steps: 500
+        solver_steps: 5000
+        #solver_steps: 500
         episodes: 1000000
         timesteps: 10000
         threshold: 0.001 # Final drag about 0.1% different
@@ -24,6 +24,8 @@ agent_params:
         do_nothing: True
         time_reward: 0.005
         smoothing: True
+        save_steps: 500
+        #save_steps: 50
 
 nn_params:
         layers: [128, 128, 128]
