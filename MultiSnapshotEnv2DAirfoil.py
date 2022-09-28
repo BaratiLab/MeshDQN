@@ -24,7 +24,7 @@ from shapely.geometry import Polygon, Point
 
 #from multiprocessing import pool
 from joblib import Parallel, delayed
-from pathos.multiprocessing import ProcessingPool as Pool
+#from pathos.multiprocessing import ProcessingPool as Pool
 
 if(torch.cuda.is_available()):
     print("USING GPU")
@@ -388,6 +388,7 @@ class MultiSnapshotEnv2DAirfoil(Env):
     def set_plot_dir(self, plot_dir):
         self.plot_dir = plot_dir
         os.makedirs(plot_dir, exist_ok=True)
+        os.makedirs(plot_dir+"/interps", exist_ok=True)
 
 
     def _remove_vertex(self, selected_coord=None):
@@ -462,26 +463,18 @@ class MultiSnapshotEnv2DAirfoil(Env):
         self.pressures = np.array([list(map(lambda x: p(x, allow_extrapolation=True),
                                    self.flow_solver.mesh.coordinates())) for p in self.p])[:,:,np.newaxis]
 
-    def _interpolate(self, idx, original_u, original_p):
-    #def _interpolate(self, idx):
-        print("\n\nHERE\n\n")
-        print(idx)
-        print(original_u)
-        print(original_p)
-        mesh = Mesh(self.flow_solver.mesh)
 
+    @staticmethod
+    def _interpolate(self, idx, original_u, original_p, v_func, p_func):
         # Interpolate to new values
         #V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 2)
-        V_new = VectorFunctionSpace(mesh, 'Lagrange', 2)
-        #V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 3)
-        v_func = Function(V_new, degree=2)
-        v_func.set_allow_extrapolation(True)
+        #v_func = Function(V_new, degree=2)
+        #v_func.set_allow_extrapolation(True)
         v_func.interpolate(original_u.copy(deepcopy=True))
 
-        P_new = FunctionSpace(mesh, 'Lagrange', 1)
-        #P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 3)
-        p_func = Function(P_new, degree=1)
-        p_func.set_allow_extrapolation(True)
+        #P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 1)
+        #p_func = Function(P_new, degree=1)
+        #p_func.set_allow_extrapolation(True)
         p_func.interpolate(original_p.copy(deepcopy=True))
 
         # Calculate new values
@@ -492,7 +485,6 @@ class MultiSnapshotEnv2DAirfoil(Env):
         p = p_func.copy(deepcopy=True)
         p.set_allow_extrapolation(True)
         self.p[idx] = p.copy(deepcopy=True)
-        #print(self.u)
 
 
     def _check_mesh(self, mesh, selected_coord):
@@ -504,28 +496,21 @@ class MultiSnapshotEnv2DAirfoil(Env):
             self.flow_solver.remesh(mesh)
 
             try:
-                for idx, (original_u, original_p) in enumerate(zip(self.original_u, self.original_p)):
-                    f_u = XDMFFile("./{}/u_{}".format(self.plot_dir, idx))
-                    f_p = XDMFFile("./{}/p_{}".format(self.plot_dir, idx))
-                    f_u.write(original_u)
-                    f_u.write(original_p)
-                raise
-                Parallel(n_jobs=len(self.original_u))(delayed(self._interpolate)(idx, u, p) \
-                         for idx, (u, p) in enumerate(zip(self.original_u, self.original_p)))
-                #pool = Pool(len(self.original_u))
-                #pool.map(self._interpolate, 
-                #        [(idx) \
-                            #, u.copy(deepcopy=True),
-                         #p.copy(deepcopy=True)) \
-                #        for idx, (u, p) in enumerate(zip(self.original_u, self.original_p))])
-                #print("\n\nHERE\n\n")
-                #print(self.u)
+                V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 2)
+                v_func = Function(V_new, degree=2)
+                v_func.set_allow_extrapolation(True)
+                P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 1)
+                p_func = Function(P_new, degree=1)
+                p_func.set_allow_extrapolation(True)
+                Parallel(n_jobs=len(self.original_u), require='sharedmem')(
+                         delayed(self._interpolate)(self, idx, u, p, v_func.copy(deepcopy=True), p_func.copy(deepcopy=True)) \
+                         for idx, (u, p) in enumerate(zip(self.original_u, self.original_p))
+                )
             except RuntimeError:
-                raise
                 print("INTERPOLATION BROKE")
                 self.flow_solver.mesh = old_mesh
                 self.coordinate_list.insert(selected_coord, selected_coord)
-            raise
+            #raise
 
             # Interpolate Velocities and pressures... somehow all the same?
             #for idx, (original_u, original_p) in enumerate(zip(self.original_u, self.original_p)):
