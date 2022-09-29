@@ -18,6 +18,8 @@ from itertools import count
 import random
 import numpy as np
 from torch import optim
+from matplotlib import pyplot as plt
+from collections import namedtuple
 
 
 SEED = 1370
@@ -38,6 +40,8 @@ else:
     device = torch.device('cpu')
 device = torch.device('cpu')
 
+Transition = namedtuple('Transition',
+                       ('state', 'action', 'next_state', 'reward'))
 @ray.remote
 class ReplayMemory(object):
     def __init__(self, capacity):
@@ -55,7 +59,8 @@ class ReplayMemory(object):
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
 
-    def __len__(self):
+    #def __len__(self):
+    def size(self):
         return len(self.memory)
 
 steps_done = 0
@@ -77,7 +82,7 @@ def select_action(state):
             return torch.tensor([random.sample(range(n_actions), 1)], dtype=torch.long).to(device)
 
 def optimize_model(optimizer):
-    if len(memory) < BATCH_SIZE:
+    if ray.get(memory.size.remote()) < BATCH_SIZE:
         return
     #print("OPTIMIZING MODEL...")
     transitions = memory.sample(BATCH_SIZE)
@@ -211,15 +216,18 @@ print("N CLOSEST: {}".format(n_actions))
 policy_net_1 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1)#.to(device)#.float()
 policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1)#.to(device)#.float()
 optimizer_fn = lambda parameters: optim.Adam(parameters, lr=LEARNING_RATE)
-optimizer = optimizer_fn(policy_net_1.parameters())
-first = True
 
 # Set up replay memory
 memory = ReplayMemory.remote(10000)
 
 # Set up training loop
 num_episodes = flow_config['agent_params']['episodes']
+ep_reward = []
+all_actions = []
+all_rewards = []
 def train_loop_per_worker(training_config):
+    optimizer = optimizer_fn(policy_net_1.parameters())
+    first = True
     #env = training_config['env']
     #print()
     #print()
@@ -240,7 +248,7 @@ def train_loop_per_worker(training_config):
         acc_rew = 0.0
         acc_rews = []
         if(episode != 0):
-            env = Env2DAirfoil.remote(flow_config)
+            env = Env2DAirfoil(flow_config)
 
         state = env.get_state()
         for t in tqdm(count()):
@@ -273,9 +281,9 @@ def train_loop_per_worker(training_config):
 
         session.report(
             {},
-            checkpoint=Checkpoint.from_dict(
-                dict(epoch=episode, model=model.state_dict())
-            ),
+            #checkpoint=Checkpoint.from_dict(
+            #    dict(epoch=episode, model=model.state_dict())
+            #),
         )
 
         # Analysis
@@ -301,16 +309,16 @@ def train_loop_per_worker(training_config):
 
             ax.set(xlabel="Episode", ylabel="Reward")
             ax.set_title("DQN Training Reward")
-            plt.savefig("./{}/{}reward.png".format(save_dir, PREFIX))
+            #plt.savefig("/home/fenics/drl_projects/MeshDQN/parallel_training/{}/{}reward.png".format(save_dir, PREFIX))
             plt.close()
 
-        np.save("./{}/{}reward.npy".format(save_dir, PREFIX), ep_reward)
+        #np.save("/home/fenics/drl_projects/MeshDQN/{}/{}reward.npy".format(save_dir, PREFIX), ep_reward)
 
-        if(len(ep_reward)%1 == 0):
-            np.save("./{}/{}actions.npy".format(save_dir, PREFIX), np.array(all_actions, dtype=object))
-            np.save("./{}/{}rewards.npy".format(save_dir, PREFIX), np.array(all_rewards, dtype=object))
-            torch.save(policy_net_1.state_dict(), "./{}/{}policy_net_1.pt".format(save_dir, PREFIX))
-            torch.save(policy_net_2.state_dict(), "./{}/{}policy_net_2.pt".format(save_dir, PREFIX))
+        #if(len(ep_reward)%1 == 0):
+            #np.save("/home/fenics/drl_projects/MeshDQN/{}/{}actions.npy".format(save_dir, PREFIX), np.array(all_actions, dtype=object))
+            #np.save("/home/fenics/drl_projects/MeshDQN/{}/{}rewards.npy".format(save_dir, PREFIX), np.array(all_rewards, dtype=object))
+            #torch.save(policy_net_1.state_dict(), "/home/fenics/drl_projects/MeshDQN/{}/{}policy_net_1.pt".format(save_dir, PREFIX))
+            #torch.save(policy_net_2.state_dict(), "/home/fenics/drl_projects/MeshDQN/{}/{}policy_net_2.pt".format(save_dir, PREFIX))
             #joblib.dump(env.model, "./{}/{}surrogate_model.joblib".format(save_dir, PREFIX))
 
 
