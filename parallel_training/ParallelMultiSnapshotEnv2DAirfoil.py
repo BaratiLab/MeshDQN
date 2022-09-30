@@ -550,29 +550,6 @@ class ParallelMultiSnapshotEnv2DAirfoil(Env):
             old_mesh = Mesh(self.flow_solver.mesh)
             self.flow_solver.remesh(mesh)
             
-            start = time.time()
-            #try:
-            #    self.velocities = np.empty((len(self.original_u), len(self.flow_solver.mesh.coordinates()), 2))
-            #    self.pressures = np.empty((len(self.original_u), len(self.flow_solver.mesh.coordinates()), 1))
-
-            #    V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 2)
-            #    v_func = Function(V_new, degree=2)
-            #    v_func.set_allow_extrapolation(True)
-            #    P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 1)
-            #    p_func = Function(P_new, degree=1)
-            #    p_func.set_allow_extrapolation(True)
-            #    #for idx, (original_u, original_p) in enumerate(zip(self.original_u, self.original_p)):
-            #    #    self._interpolate(idx, original_u, original_p, v_func.copy(deepcopy=True), p_func.copy(deepcopy=True))
-            #    Parallel(n_jobs=len(self.original_u), require='sharedmem')(
-            #             delayed(self._interpolate)(idx, u, p, v_func.copy(deepcopy=True), p_func.copy(deepcopy=True)) \
-            #             #delayed(self._interpolate)(self, idx, u, p, v_func.copy(deepcopy=True), p_func.copy(deepcopy=True)) \
-            #             for idx, (u, p) in enumerate(zip(self.original_u, self.original_p))
-            #    )
-            #except RuntimeError:
-            #    print("INTERPOLATION BROKE")
-            #    self.flow_solver.mesh = old_mesh
-            #    self.coordinate_list.insert(selected_coord, selected_coord)
-
             # Interpolate Velocities and pressures... somehow all the same?
             for idx, (original_u, original_p) in enumerate(zip(self.original_u, self.original_p)):
                 try:
@@ -612,7 +589,6 @@ class ParallelMultiSnapshotEnv2DAirfoil(Env):
 
             self._calculate_velocities()
             self._calculate_pressures()
-            #print("INTERPOLATION TIME: {}".format(time.time() - start))
 
             # Update this to reflect removed vertex
             self.removable = np.argwhere(self.flow_solver.removable)[:,0]
