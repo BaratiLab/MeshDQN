@@ -123,30 +123,33 @@ class ParallelMultiSnapshotEnv2DAirfoil(Env):
                     self.original_p.append(p.copy(deepcopy=True))
                     self.u.append(u.copy(deepcopy=True))
                     self.p.append(p.copy(deepcopy=True))
-        else:
-            print("\n\n\nSECOND TIME AROUND\n\n\n")
+        else: # Load saved values
             self.original_u, self.original_p, self.p, self.u = ([] for i in range(4))
+            self.velocities = np.load("/home/fenics/drl_projects/MeshDQN/parallel_training/" + self.plot_dir + \
+                                      "/snapshots/velocities.npy")
+            self.pressures = np.load("/home/fenics/drl_projects/MeshDQN/parallel_training/" + self.plot_dir + \
+                                     "/snapshots/pressures.npy")
+            save_us = np.load("/home/fenics/drl_projects/MeshDQN/parallel_training/" + self.plot_dir + \
+                              "/snapshots/save_velocities.npy")
+            save_ps = np.load("/home/fenics/drl_projects/MeshDQN/parallel_training/" + self.plot_dir + \
+                              "/snapshots/save_pressures.npy")
             for i in range(int(np.ceil(self.solver_steps/self.save_steps))):
-                uf = XDMFFile("/home/fenics/drl_projects/MeshDQN/parallel_training/" + self.plot_dir + \
-                              "/snapshots/{}_u.xdmf".format(i))
-                mesh = Mesh()
-                uf.read(mesh)
-                U_new = VectorFunctionSpace(mesh, 'Lagrange', 2)
-                u_func = Function(U_new, degree=2)
-                uf.close()
+                # This will almost certainly break down with any change in underlying fenics data structure
+                # Creat new u function
+                U_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 2)
+                u_func = Function(U_new)#, degree=2)
+                u_func.vector().set_local(save_us[i].flatten())
                 self.original_u.append(u_func.copy(deepcopy=True))
                 self.u.append(u_func.copy(deepcopy=True))
-                del u_func
 
-                pf = XDMFFile("/home/fenics/drl_projects/MeshDQN/parallel_training/" + self.plot_dir + \
-                              "/snapshots/{}_p.xdmf".format(i))
-                mesh = Mesh()
-                pf.read(mesh)
-                P_new = FunctionSpace(mesh, 'Lagrange', 1)
-                p_func = Function(P_new, degree=1)
-                pf.close()
+                # Create new p function
+                P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 1)
+                p_func = Function(P_new)#, degree=1)
+                p_func.vector().set_local(save_ps[i])
                 self.original_p.append(p_func.copy(deepcopy=True))
                 self.p.append(p_func.copy(deepcopy=True))
+
+                del u_func
                 del p_func
 
         
@@ -396,6 +399,10 @@ class ParallelMultiSnapshotEnv2DAirfoil(Env):
         self.new_drags = np.array(self.new_drags)
         self.new_lifts = np.array(self.new_lifts)
 
+        #print("NEW DRAGS: {}".format(self.new_drags))
+        #print("GT  DRAGS: {}".format(self.gt_drag))
+        #raise
+
         # Drag reward
         #drag_factor = -2*np.log(0.5)/self.threshold
         drag_factor = -4*np.log(0.5)/self.threshold
@@ -425,13 +432,19 @@ class ParallelMultiSnapshotEnv2DAirfoil(Env):
         os.makedirs(plot_dir, exist_ok=True)
         os.makedirs(plot_dir+"/snapshots", exist_ok=True)
 
+        # Save numpy format of pressure and velocity
+        np.save(self.plot_dir + "/snapshots/velocities.npy", self.velocities)
+        np.save(self.plot_dir + "/snapshots/pressures.npy", self.pressures)
+
+        # Save primitive information from pressure and velocity
+        save_us, save_ps = [], []
         for i in range(len(self.original_u)):
-            u = XDMFFile(self.plot_dir + "/snapshots/{}_u.xdmf".format(i))
-            u.write(self.original_u[i])
-            u.close()
-            p = XDMFFile(self.plot_dir + "/snapshots/{}_p.xdmf".format(i))
-            p.write(self.original_p[i])
-            p.close()
+            save_us.append(self.original_u[i].vector().get_local())
+            save_ps.append(self.original_p[i].vector().get_local())
+
+        #print("\n\nSAVE PS SHAPE: {}\n\n".format(np.array(save_ps).shape))
+        np.save(self.plot_dir + "/snapshots/save_velocities.npy", save_us)
+        np.save(self.plot_dir + "/snapshots/save_pressures.npy", save_ps)
 
 
     def _remove_vertex(self, selected_coord=None):

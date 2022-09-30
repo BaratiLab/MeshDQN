@@ -20,6 +20,8 @@ import numpy as np
 from torch import optim
 from matplotlib import pyplot as plt
 from collections import namedtuple
+from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader
 
 
 SEED = 1370
@@ -70,8 +72,8 @@ def select_action(state):
     eps_threshold = EPS_END + (EPS_START - EPS_END) * np.exp(-steps_done/EPS_DECAY)
     eps_threshs.append(eps_threshold)
     steps_done += 1
-    if(steps_done%100 == 0):
-        np.save("./{}/{}eps.npy".format(save_dir, PREFIX), eps_threshs)
+    #if(steps_done%100 == 0):
+    #    np.save("./{}/{}eps.npy".format(save_dir, PREFIX), eps_threshs)
     if(sample > eps_threshold): # Exploit
         with torch.no_grad():
             return torch.tensor([[policy_net_1(state).argmax()]]).to(device)
@@ -81,11 +83,13 @@ def select_action(state):
         else:
             return torch.tensor([random.sample(range(n_actions), 1)], dtype=torch.long).to(device)
 
+criterion = torch.nn.HuberLoss()
+losses = []
 def optimize_model(optimizer):
     if ray.get(memory.size.remote()) < BATCH_SIZE:
         return
     #print("OPTIMIZING MODEL...")
-    transitions = memory.sample(BATCH_SIZE)
+    transitions = ray.get(memory.sample.remote(BATCH_SIZE))
     batch = Transition(*zip(*transitions))
 
     # Compute a mask of non-final states and concatenate the batch elements
@@ -148,8 +152,9 @@ def optimize_model(optimizer):
     # Compute Huber loss
     loss = criterion(state_action_values.float(), expected_state_action_values.float()).float()
     losses.append(loss.item())
-    if((len(memory)%25) == 0):
-        np.save("./{}/{}losses.npy".format(save_dir, PREFIX), losses)
+    #if((len(memory)%25) == 0):
+    #if((ray.get(memory.size.remote())%25) == 0):
+    #    np.save("./{}/{}losses.npy".format(save_dir, PREFIX), losses)
 
     # Optimize the model
     optimizer.zero_grad()
@@ -189,7 +194,7 @@ with open("../configs/ray_{}.yaml".format(PREFIX.split("_")[0]), 'r') as stream:
 #env.plot_state.remote()
 env = Env2DAirfoil(flow_config)
 env.set_plot_dir(save_dir)
-env.plot_state()
+#env.plot_state()
 
 flow_config['agent_params']['plot_dir'] = save_dir
 
@@ -216,6 +221,14 @@ print("N CLOSEST: {}".format(n_actions))
 policy_net_1 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1)#.to(device)#.float()
 policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1)#.to(device)#.float()
 optimizer_fn = lambda parameters: optim.Adam(parameters, lr=LEARNING_RATE)
+# Prime policy nets
+try:
+    NUM_INPUTS = 2 + 3 * int(flow_config['agent_params']['solver_steps']/flow_config['agent_params']['save_steps'])
+except:
+    NUM_INPUTS = 5
+policy_net_1.set_num_nodes(NUM_INPUTS)
+policy_net_2.set_num_nodes(NUM_INPUTS)
+
 
 # Set up replay memory
 memory = ReplayMemory.remote(10000)
@@ -251,7 +264,8 @@ def train_loop_per_worker(training_config):
             env = Env2DAirfoil(flow_config)
 
         state = env.get_state()
-        for t in tqdm(count()):
+        for t in count():
+            #print("\nSTEP {}\n".format(t))
 
             action = select_action(state)
             next_state, reward, done, _ = env.step(action.item())
@@ -279,12 +293,12 @@ def train_loop_per_worker(training_config):
                 ep_reward.append(acc_rew)
                 break
 
-        session.report(
-            {},
-            #checkpoint=Checkpoint.from_dict(
-            #    dict(epoch=episode, model=model.state_dict())
-            #),
-        )
+        #session.report(
+        #    {},
+        #    #checkpoint=Checkpoint.from_dict(
+        #    #    dict(epoch=episode, model=model.state_dict())
+        #    #),
+        #)
 
         # Analysis
         all_actions.append(np.array(episode_actions))
@@ -323,9 +337,9 @@ def train_loop_per_worker(training_config):
 
 
 
-scaling_config = ScalingConfig(num_workers=1)
 # If using GPUs, use the below scaling config instead.
 # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
+scaling_config = ScalingConfig(num_workers=2)
 trainer = TorchTrainer(
     train_loop_per_worker=train_loop_per_worker,
     train_loop_config={'env_config': flow_config},

@@ -155,7 +155,7 @@ def optimize_model(optimizer):
     if len(memory) < BATCH_SIZE:
         return
     #print("OPTIMIZING MODEL...")
-    transitions = memory.sample(BATCH_SIZE)
+    transitions = ray.get(memory.sample.remote(BATCH_SIZE))
     batch = Transition(*zip(*transitions))
 
     # Compute a mask of non-final states and concatenate the batch elements
