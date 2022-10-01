@@ -29,21 +29,21 @@ class NodeRemovalNet(torch.nn.Module):
         super(NodeRemovalNet, self).__init__()
         self.conv_width = conv_width
         self.initial_num_nodes = initial_num_nodes
-        self.conv1 =  SAGEConv(2, conv_width)
-        self.pool1 = TopKPooling(conv_width, ratio=topk)
-        self.conv2 =  SAGEConv(conv_width, conv_width)
-        self.pool2 = TopKPooling(conv_width, ratio= topk)
-        self.conv3 =  SAGEConv(conv_width, conv_width)
-        self.pool3 = TopKPooling(conv_width, ratio=topk)
-        self.conv4 =  GCNConv(conv_width, conv_width)
-        self.pool4 = TopKPooling(conv_width, ratio=topk)
-        self.conv5 =  GCNConv(conv_width, conv_width)
-        self.pool5 = TopKPooling(conv_width, ratio=topk)
-        self.conv6 =  GCNConv(conv_width, conv_width)
-        self.pool6 = TopKPooling(conv_width, ratio=topk)
-        self.lin1 = torch.nn.Linear(2*conv_width, 128)
-        self.lin2 = torch.nn.Linear(128, 64)
-        self.lin3 = torch.nn.Linear(64, output_dim)
+        self.conv1 =  SAGEConv(2, conv_width).float()
+        self.pool1 = TopKPooling(conv_width, ratio=topk).float()
+        self.conv2 =  SAGEConv(conv_width, conv_width).float()
+        self.pool2 = TopKPooling(conv_width, ratio= topk).float()
+        self.conv3 =  SAGEConv(conv_width, conv_width).float()
+        self.pool3 = TopKPooling(conv_width, ratio=topk).float()
+        self.conv4 =  GCNConv(conv_width, conv_width).float()
+        self.pool4 = TopKPooling(conv_width, ratio=topk).float()
+        self.conv5 =  GCNConv(conv_width, conv_width).float()
+        self.pool5 = TopKPooling(conv_width, ratio=topk).float()
+        self.conv6 =  GCNConv(conv_width, conv_width).float()
+        self.pool6 = TopKPooling(conv_width, ratio=topk).float()
+        self.lin1 = torch.nn.Linear(2*conv_width, 128).float()
+        self.lin2 = torch.nn.Linear(128, 64).float()
+        self.lin3 = torch.nn.Linear(64, output_dim).float()
 
         torch.manual_seed(0)
         self.reset()
@@ -145,6 +145,24 @@ class NodeRemovalNet(torch.nn.Module):
         x = F.softmax(x, dim=1) # Pick which vertex to remove
 
         return x
+
+    def get_weights(self):
+        return {k: v.cpu() for k, v in self.state_dict().items()}
+
+    def set_weights(self, weights):
+        self.load_state_dict(weights)
+
+    def get_gradients(self):
+        grads = []
+        for p in self.parameters():
+            grad = None if p.grad is None else p.grad.data.cpu().numpy()
+            grads.append(grad)
+        return grads
+
+    def set_gradients(self, gradients):
+        for g, p in zip(gradients, self.parameters()):
+            if g is not None:
+                p.grad = torch.from_numpy(g)
 
 
 class AirfoilGCNN(torch.nn.Module):
