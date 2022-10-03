@@ -4,15 +4,18 @@ from matplotlib import pyplot as plt
 
 # Good success so far
 #PREFIX = 'ys930_1386_long_interp'
-PREFIX = 'ys930_ray'
+#PREFIX = 'ys930_ray_remote_dqn'
+#PREFIX = 'ys930_ray_remote_dqn_tuning'
+#PREFIX = 'ys930_ray_single_remote_dqn_tuning'
+PREFIX = 'ys930_ray_parallel_training'
 
 actions = np.load("./{}/{}_actions.npy".format(PREFIX, PREFIX), allow_pickle=True)
 print(len(actions))
 rewards = np.load("./{}/{}_rewards.npy".format(PREFIX, PREFIX), allow_pickle=True)
 losses = np.load("./{}/{}_losses.npy".format(PREFIX, PREFIX), allow_pickle=True)
 losses = losses[losses != np.array(None)]
-#epss = np.load("./{}/{}_eps.npy".format(PREFIX, PREFIX), allow_pickle=True)
-#print("CURRENT EPSILON:\t\t{0:.5f} AT STEP: {1}".format(epss[-1], len(losses)))
+epss = np.load("./{}/{}_eps.npy".format(PREFIX, PREFIX), allow_pickle=True)
+print("CURRENT EPSILON:\t\t{0:.5f} AT STEP: {1}".format(epss[-1], len(losses)))
 
 #actions = np.load("./100k_new_reward_small_lr_batch_32_drag_and_time_ag11_actions.npy", allow_pickle=True)
 #rewards = np.load("./100k_new_reward_small_lr_batch_32_drag_and_time_ag11_rewards.npy", allow_pickle=True)
@@ -54,15 +57,16 @@ def _movingaverage(values, window):
 #fig, ax = plt.subplots(figsize=(8,6))
 fig, ax = plt.subplots()
 #ax.plot(losses, label="Loss")
-#try:
-#    ax.plot(range(len(losses))[199:], _movingaverage(losses, 200), label="200 Step Window")
-#except ValueError:
-#    ax.plot(losses)
-#    pass
+print("OPTIMIZER STEPS: {}".format(len(losses)))
+try:
+    ax.plot(range(len(losses))[199:], _movingaverage(losses, 200), label="200 Step Window")
+except ValueError:
+    ax.plot(losses)
+    pass
 try:
     ax.plot(range(len(losses))[499:], _movingaverage(losses, 500), label="500 Step Window")
 except ValueError:
-    ax.plot(losses)
+    #ax.plot(losses)
     pass
 try:
     ax.plot(range(len(losses))[999:], _movingaverage(losses, 1000), label="1000 Step Moving Average")
@@ -76,10 +80,6 @@ try:
     ax.plot(range(len(losses))[49999:], _movingaverage(losses, 50000), label="50000 Step Window")
 except ValueError:
     pass
-#try:
-#    ax.plot(range(len(losses))[9999:], _movingaverage(losses, 10000))
-#except ValueError:
-#    pass
 _, counts = np.unique(np.hstack(actions), return_counts=True)
 percents = counts / sum(counts)
 print("DO NOTHING PERCENT: {}, MEDIAN: {}".format(100*percents[-1], np.median(100*percents)))
@@ -97,14 +97,14 @@ plt.show()
 
 fig, ax = plt.subplots()
 #ax.hist(np.hstack(actions), bins=201, density=True)
-for i in range(10):
-    print(actions[i])
+#for i in range(10):
+#    print(actions[i])
 
-#print(len(actions), np.hstack(actions).shape)
+print(len(actions), np.hstack(actions).shape)
 ax.hist(np.hstack(actions), bins=181, density=True)
 ax.set_xlabel("Action", fontsize=12)
 ax.set_ylabel("Fraction of Selections", fontsize=12)
 ax.set_title("Double DQN Action Selection", fontsize=14)
 plt.savefig("./{}/{}_action_selection.png".format(PREFIX, PREFIX))
-plt.show()
+#plt.show()
 

@@ -29,21 +29,21 @@ class NodeRemovalNet(torch.nn.Module):
         super(NodeRemovalNet, self).__init__()
         self.conv_width = conv_width
         self.initial_num_nodes = initial_num_nodes
-        self.conv1 =  SAGEConv(2, conv_width).float()
-        self.pool1 = TopKPooling(conv_width, ratio=topk).float()
-        self.conv2 =  SAGEConv(conv_width, conv_width).float()
-        self.pool2 = TopKPooling(conv_width, ratio= topk).float()
-        self.conv3 =  SAGEConv(conv_width, conv_width).float()
-        self.pool3 = TopKPooling(conv_width, ratio=topk).float()
-        self.conv4 =  GCNConv(conv_width, conv_width).float()
-        self.pool4 = TopKPooling(conv_width, ratio=topk).float()
-        self.conv5 =  GCNConv(conv_width, conv_width).float()
-        self.pool5 = TopKPooling(conv_width, ratio=topk).float()
-        self.conv6 =  GCNConv(conv_width, conv_width).float()
-        self.pool6 = TopKPooling(conv_width, ratio=topk).float()
-        self.lin1 = torch.nn.Linear(2*conv_width, 128).float()
-        self.lin2 = torch.nn.Linear(128, 64).float()
-        self.lin3 = torch.nn.Linear(64, output_dim).float()
+        self.conv1 =  SAGEConv(2, conv_width)#.float()
+        self.pool1 = TopKPooling(conv_width, ratio=topk)#.float()
+        self.conv2 =  SAGEConv(conv_width, conv_width)#.float()
+        self.pool2 = TopKPooling(conv_width, ratio= topk)#.float()
+        #self.conv3 =  SAGEConv(conv_width, conv_width)#.float()
+        #self.pool3 = TopKPooling(conv_width, ratio=topk)#.float()
+        self.conv4 =  GCNConv(conv_width, conv_width)#.float()
+        self.pool4 = TopKPooling(conv_width, ratio=topk)#.float()
+        self.conv5 =  GCNConv(conv_width, conv_width)#.float()
+        self.pool5 = TopKPooling(conv_width, ratio=topk)#.float()
+        #self.conv6 =  GCNConv(conv_width, conv_width)#.float()
+        #self.pool6 = TopKPooling(conv_width, ratio=topk)#.float()
+        self.lin1 = torch.nn.Linear(2*conv_width, 128)#.float()
+        self.lin2 = torch.nn.Linear(128, 64)#.float()
+        self.lin3 = torch.nn.Linear(64, output_dim)#.float()
 
         torch.manual_seed(0)
         self.reset()
@@ -59,14 +59,14 @@ class NodeRemovalNet(torch.nn.Module):
         nn.init.normal_(self.conv2.lin_l.bias)
         nn.init.xavier_normal_(self.conv2.lin_r.weight, gain=0.9)
 
-        nn.init.xavier_normal_(self.conv3.lin_l.weight, gain=0.9)
-        nn.init.normal_(self.conv3.lin_l.bias)
-        nn.init.xavier_normal_(self.conv3.lin_r.weight, gain=0.9)
+        #nn.init.xavier_normal_(self.conv3.lin_l.weight, gain=0.9)
+        #nn.init.normal_(self.conv3.lin_l.bias)
+        #nn.init.xavier_normal_(self.conv3.lin_r.weight, gain=0.9)
 
         # GCN layers
         nn.init.xavier_normal_(self.conv4.lin.weight, gain=0.9)
         nn.init.xavier_normal_(self.conv5.lin.weight, gain=0.9)
-        nn.init.xavier_normal_(self.conv6.lin.weight, gain=0.9)
+        #nn.init.xavier_normal_(self.conv6.lin.weight, gain=0.9)
 
         nn.init.xavier_normal_(self.lin1.weight, gain=0.9)
         nn.init.normal_(self.lin1.bias)
@@ -155,14 +155,14 @@ class NodeRemovalNet(torch.nn.Module):
     def get_gradients(self):
         grads = []
         for p in self.parameters():
-            grad = None if p.grad is None else p.grad.data.cpu().numpy()
+            grad = None if p.grad is None else p.grad.data.cpu()#.numpy()
             grads.append(grad)
         return grads
 
     def set_gradients(self, gradients):
         for g, p in zip(gradients, self.parameters()):
             if g is not None:
-                p.grad = torch.from_numpy(g)
+                p.grad = g
 
 
 class AirfoilGCNN(torch.nn.Module):

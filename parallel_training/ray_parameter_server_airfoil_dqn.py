@@ -56,7 +56,6 @@ class ReplayMemory(object):
 
     def push(self, *args):
         """Saves a transition."""
-        #print("\n\nMORE DATA\n\n")
         if len(self.memory) < self.capacity:
             self.memory.append(None)
         self.memory[self.position] = Transition(*args)
@@ -79,6 +78,7 @@ def _movingaverage(values, window):
 @ray.remote
 class DataHandler(object):
     def __init__(self, save_dir):
+        from parallel_airfoilgcnn import NodeRemovalNet
         self.save_dir = save_dir
         self.rewards = []
         self.ep_rewards = []
@@ -119,14 +119,20 @@ class DataHandler(object):
         plt.close()
 
 
+TARGET_UPDATE = 50
+grad_steps = 0
 @ray.remote
 class ParameterServer(object):
-    def __init__(self, lr):
+    def __init__(self, save_dir, PREFIX):
+        self.save_dir = save_dir
+        self.PREFIX = PREFIX
         self.policy_net_1 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1).float()
         self.policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1).float()
+        self.policy_net_1.set_num_nodes(NUM_INPUTS)
+        self.policy_net_2.set_num_nodes(NUM_INPUTS)
 
         optimizer_fn = lambda parameters: optim.Adam(parameters, lr=LEARNING_RATE)
-        self.optimizer = optimizer_fn(policy_net_1.parameters())
+        self.optimizer = optimizer_fn(self.policy_net_1.parameters())
         self.num_grads = 0
         self.select = True
 
@@ -134,21 +140,17 @@ class ParameterServer(object):
         if((self.num_grads % TARGET_UPDATE) == 0):
             self.select = not(self.select)
 
-        summed_gradients = [
-            np.stack(gradient_zip).sum(axis=0) for gradient_zip in zip(*gradients)
-        ]
-
         self.optimizer.zero_grad()
         self.optimizer.step()
         self.num_grads += 1
 
         if(self.select):
-            self.policy_net_1.set_gradients(summed_gradients)
-            self.optimizer = optimizer_fn(policy_net_2.parameters())
+            self.policy_net_1.set_gradients(gradients[0])
+            self.optimizer = optimizer_fn(self.policy_net_1.parameters())
             return self.policy_net_1.get_weights()
         else:
-            self.policy_net_2.set_gradients(summed_gradients)
-            self.optimizer = optimizer_fn(policy_net_2.parameters())
+            self.policy_net_2.set_gradients(gradients[0])
+            self.optimizer = optimizer_fn(self.policy_net_2.parameters())
             return self.policy_net_2.get_weights()
 
     def get_weights(self):
@@ -157,12 +159,26 @@ class ParameterServer(object):
         else:
             return self.policy_net_2.get_weights()
 
+    def select_action(self, state):
+        return torch.tensor([[self.policy_net_1(state).argmax()]]).to(device)
+
+    def select(self):
+        return self.select
+
+    def write(self):
+        torch.save(self.policy_net_1.state_dict(),
+                    "/home/fenics/drl_projects/MeshDQN/parallel_training/{}/{}policy_net_1.pt".format(self.save_dir, self.PREFIX))
+        torch.save(self.policy_net_2.state_dict(),
+                    "/home/fenics/drl_projects/MeshDQN/parallel_training/{}/{}policy_net_2.pt".format(self.save_dir, self.PREFIX))
+
 
 @ray.remote
 class DataWorker(object):
     def __init__(self):
         self.policy_net_1 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1).float()
         self.policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1).float()
+        self.policy_net_1.set_num_nodes(NUM_INPUTS)
+        self.policy_net_2.set_num_nodes(NUM_INPUTS)
         self.num_grads = 0
         self.select = True
 
@@ -186,28 +202,37 @@ class DataWorker(object):
         # Easiest way to batch this
         loader = DataLoader(state_batch, batch_size=BATCH_SIZE)
         for data in loader:
-            output = policy_net_1(data)
+            if(self.select):
+                output = self.policy_net_1(data)
+            else:
+                with torch.no_grad():
+                    output = self.policy_net_1(data)
+            #output = policy_net_1(data)
         state_action_values = output[:,action_batch[:,0]].diag()
 
         # Compute V(s_{t+1}) for all next states.
-        next_state_values = torch.zeros(BATCH_SIZE).to(device).float()
+        next_state_values = torch.zeros(BATCH_SIZE).to(device)#.float()
         loader = DataLoader(non_final_next_states, batch_size=BATCH_SIZE)
 
         # get batched output
         for data in loader:
-                output = policy_net_2(data).max(1)[0]
+            if(self.select):
+                with torch.no_grad():
+                    output = self.policy_net_2(data).max(1)[0].float()
+            else:
+               output = self.policy_net_2(data).max(1)[0].float()
+            #output = policy_net_2(data).max(1)[0].float()
         next_state_values[non_final_mask] = output
 
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
-        return next_state_values.float(), expected_state_action_values.float()
+        return state_action_values.float(), expected_state_action_values.float()
 
 
     #def compute_gradients(self, weights, replay):
-    def compute_gradients(self, weights):
-        if((self.num_grads % TARGET_UPDATE) == 0):
-            self.select = not(self.select)
+    def compute_gradients(self, weights, select):
+        self.select = select
 
         # Select model to optimize
         if(self.select):
@@ -216,7 +241,7 @@ class DataWorker(object):
             self.policy_net_2.set_weights(weights)
 
         # Compute prediction and zero gradients
-        pred, target = self._get_data()#replay)
+        pred, target = self._get_data()
         if(self.select):
             self.policy_net_1.zero_grad()
         else:
@@ -236,14 +261,16 @@ class DataWorker(object):
 criterion = torch.nn.HuberLoss()
 losses = []
 def optimize_model():
-    if ray.get(memory.size.remote()) < BATCH_SIZE:
+    if ray.get(memory.size.remote()) < 5*BATCH_SIZE:
         return
+
     # Get gradients
     current_weights = ps.get_weights.remote()
+    select = ray.get(ps.select.remote())
     gradients = {}
     losses = []
     for worker in workers:
-        gradients[worker.compute_gradients.remote(current_weights)] = worker
+        gradients[worker.compute_gradients.remote(current_weights, select)] = worker
 
     # Apply gradients
     for i in range(NUM_WORKERS):
@@ -253,7 +280,8 @@ def optimize_model():
 
         # Compute and apply gradients.
         current_weights = ps.apply_gradients.remote(*[ready_gradient_id])
-        gradients[worker.compute_gradients.remote(current_weights)] = worker
+        select = ray.get(ps.select.remote())
+        gradients[worker.compute_gradients.remote(current_weights, select)] = worker
 
     return np.mean(losses)
 
@@ -261,20 +289,24 @@ def optimize_model():
 RESTART = False
 
 # Hyperparameters to tune
-BATCH_SIZE = 4
+BATCH_SIZE = 32
+#BATCH_SIZE = 2
 GAMMA = 1.
-EPS_START = 1.
+EPS_START = 0.5
 EPS_END = 0.01
-EPS_DECAY = 100000
+#EPS_DECAY = 100000
+EPS_DECAY = 20000
 #EPS_DECAY = 10000
-TARGET_UPDATE = 50
+#TARGET_UPDATE = 50
+#LEARNING_RATE = 0.0005
 LEARNING_RATE = 0.0005
-NUM_WORKERS = 2
+NUM_WORKERS = 1
+NUM_PARALLEL = 12
 
 eps_threshs = []
 
 # Prefix used for saving results
-PREFIX = 'ys930_ray_remote_dqn_'
+PREFIX = 'ys930_ray_parallel_training_'
 
 # Save directory
 save_dir = 'training_results'
@@ -287,6 +319,12 @@ save_dir += '/' + PREFIX[:-1]
 # Set up environment
 with open("../configs/ray_{}.yaml".format(PREFIX.split("_")[0]), 'r') as stream:
     flow_config = yaml.safe_load(stream)
+
+# Save to directory
+with open(save_dir + "/config.yml", 'w') as fout:
+    yaml.dump(flow_config, fout)
+fout.close()
+
 env = Env2DAirfoil(flow_config)
 env.set_plot_dir(save_dir)
 #env.plot_state()
@@ -300,26 +338,26 @@ n_actions = 180
 print("N CLOSEST: {}".format(n_actions))
 
 # Set up for DQN
-policy_net_1 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1)#.to(device)#.float()
-policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1)#.to(device)#.float()
+#policy_net_1 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1)#.to(device)#.float()
+#policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1)#.to(device)#.float()
 optimizer_fn = lambda parameters: optim.Adam(parameters, lr=LEARNING_RATE)
 # Prime policy nets
 try:
     NUM_INPUTS = 2 + 3 * int(flow_config['agent_params']['solver_steps']/flow_config['agent_params']['save_steps'])
 except:
     NUM_INPUTS = 5
-policy_net_1.set_num_nodes(NUM_INPUTS)
-policy_net_2.set_num_nodes(NUM_INPUTS)
+#policy_net_1.set_num_nodes(NUM_INPUTS)
+#policy_net_2.set_num_nodes(NUM_INPUTS)
 
 # Set up replay memory and data handler
-memory = ReplayMemory.remote(10000)
+memory = ReplayMemory.remote(20000)
 save_str = "/home/fenics/drl_projects/MeshDQN/parallel_training/{}/{}".format(save_dir, PREFIX)
 print("\n\nSAVE STRING: {}\n\n".format(save_str))
 handler = DataHandler.remote(save_str)
 
 print("Running Asynchronous Parameter Server Training.")
 #ray.init(ignore_reinit_error=True)
-ps = ParameterServer.remote(1e-2)
+ps = ParameterServer.remote(save_dir, PREFIX)
 workers = [DataWorker.remote() for i in range(NUM_WORKERS)]
 
 # Set up training loop
@@ -334,7 +372,7 @@ def train_loop_per_worker(training_config):
     seed = int(10000*np.random.random())
     np.random.seed(seed)
     random.seed(seed)
-    optimizer = optimizer_fn(policy_net_1.parameters())#.remote())
+    #optimizer = optimizer_fn(policy_net_1.parameters())#.remote())
     first = True
     env = Env2DAirfoil(training_config['env_config'])
     steps_done = 0
@@ -361,7 +399,8 @@ def train_loop_per_worker(training_config):
             steps_done += 1
             if(sample > eps_threshold): # Exploit
                 with torch.no_grad():
-                    action = torch.tensor([[policy_net_1(state).argmax()]]).to(device)
+                    #action = torch.tensor([[policy_net_1(state).argmax()]]).to(device)
+                    action = ray.get(ps.select_action.remote(state))
             else: # Explore
                 if(flow_config['agent_params']['do_nothing']):
                     action = torch.tensor([random.sample(range(n_actions+1), 1)], dtype=torch.long).to(device)
@@ -383,10 +422,11 @@ def train_loop_per_worker(training_config):
                 next_state = None
     
             if(next_state is not None):
+                #print("\n\nPUSHING\n\n")
                 memory.push.remote(state.to(device), action.to(device), next_state.to(device), reward.to(device))
             else:
-                #print("\n\nWHY ARENT WE PUSHING???\n\n")
                 memory.push.remote(state.to(device), action.to(device), next_state, reward.to(device))
+            #raise
     
             state = next_state
     
@@ -403,21 +443,24 @@ def train_loop_per_worker(training_config):
         # Analysis
         handler.add_episode.remote(episode_rewards, episode_actions)
     
+        # Handle data and model saving
         if((episode % 5) == 0):
             handler.plot.remote()
-    
         handler.write.remote()
+        ps.write.remote()
     
         #if(len(ep_reward)%1 == 0):
-        torch.save(policy_net_1.state_dict(),
-                    "/home/fenics/drl_projects/MeshDQN/parallel_training/{}/{}policy_net_1.pt".format(save_dir, PREFIX))
-        torch.save(policy_net_2.state_dict(),
-                    "/home/fenics/drl_projects/MeshDQN/parallel_training/{}/{}policy_net_2.pt".format(save_dir, PREFIX))
+        #torch.save(policy_net_1.state_dict(),
+        #            "/home/fenics/drl_projects/MeshDQN/parallel_training/{}/{}policy_net_1.pt".format(save_dir, PREFIX))
+        #torch.save(policy_net_2.state_dict(),
+        #            "/home/fenics/drl_projects/MeshDQN/parallel_training/{}/{}policy_net_2.pt".format(save_dir, PREFIX))
+
 
 
 
 # If using GPUs, use the below scaling config instead.
-scaling_config = ScalingConfig(num_workers=12)
+#scaling_config = ScalingConfig(num_workers=1)
+scaling_config = ScalingConfig(num_workers=NUM_PARALLEL)
 trainer = TorchTrainer(
     train_loop_per_worker=train_loop_per_worker,
     train_loop_config={'env_config': flow_config},

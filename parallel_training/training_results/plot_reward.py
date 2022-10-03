@@ -13,7 +13,11 @@ f = lambda steps_done: EPS_END + (EPS_START - EPS_END) * np.exp(-steps_done/EPS_
 
 # Good success so far
 #PREFIX = 'ys930_1386_long_interp'
-PREFIX = 'ys930_ray'
+#PREFIX = 'ys930_ray'
+#PREFIX = 'ys930_ray_remote_dqn'
+#PREFIX = 'ys930_ray_remote_dqn_tuning'
+#PREFIX = 'ys930_ray_single_remote_dqn_tuning'
+PREFIX = 'ys930_ray_parallel_training'
 
 #TODO Intrpolate original mesh to current mesh each time instead of incremental interpolation?
 ep_reward = np.load("./{}/{}_reward.npy".format(PREFIX, PREFIX))
@@ -28,16 +32,16 @@ try:
 except ValueError:
     ax.plot(ep_reward, label="No Window")
     pass
-try:
-    ax.plot(list(range(len(ep_reward)))[999:], _movingaverage(ep_reward, 1000), label="1000 Episode Window")
-    pass
-except ValueError:
-    pass
-try:
-    ax.plot(list(range(len(ep_reward)))[4999:], _movingaverage(ep_reward, 5000), label="5000 Episode Window")
-    pass
-except ValueError:
-    pass
+#try:
+#    ax.plot(list(range(len(ep_reward)))[999:], _movingaverage(ep_reward, 1000), label="1000 Episode Window")
+#    pass
+#except ValueError:
+#    pass
+#try:
+#    ax.plot(list(range(len(ep_reward)))[4999:], _movingaverage(ep_reward, 5000), label="5000 Episode Window")
+#    pass
+#except ValueError:
+#    pass
 ax.set_xlabel("Episode", fontsize=12)
 ax.set_ylabel("Reward", fontsize=12)
 ax.set_title("Double DQN Moving Average Reward", fontsize=14)
