@@ -12,7 +12,9 @@ SHOW_INTERPOLATION = True
 
 # New ys930 drag trajectory plots
 if(True):
-    save_dir = "ys930_1386_long_interp"
+    #save_dir = "ys930_ray_parallel_training"
+    save_dir = "ys930_ray_recreate"
+    save_dir = "ys930_ray_more_exploit"
     data = pd.read_csv("./benchmark_results/smooth_ys930_1.0_0.001_smooth_benchmark.csv")
     
     # Screen coarse meshes since they have inconsistent results
@@ -143,7 +145,9 @@ if(True):
 
 # New ys930 lift trajectory plots
 if(True):
-    save_dir = "ys930_1386_long_interp"
+    #save_dir = "ys930_ray_parallel_training"
+    save_dir = "ys930_ray_recreate"
+    save_dir = "ys930_ray_more_exploit"
     data = pd.read_csv("./benchmark_results/smooth_ys930_1.0_0.001_smooth_benchmark.csv")
     
     # Screen coarse meshes since they have inconsistent results
@@ -276,7 +280,9 @@ if(True):
 
 # Check interpolation at each timestep
 if(True):
-    save_dir = "ys930_1386_long_interp"
+    #save_dir = "ys930_ray_parallel_training"
+    save_dir = "ys930_ray_recreate"
+    save_dir = "ys930_ray_more_exploit"
     fig, ax = plt.subplots(nrows=2, ncols=5, figsize=(20,7))
 
     # Load drag trajectory and plot

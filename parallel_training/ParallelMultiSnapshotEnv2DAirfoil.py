@@ -418,6 +418,8 @@ class ParallelMultiSnapshotEnv2DAirfoil(Env):
 
         # Vertex Threshold
         vert_thresh = len(self.flow_solver.mesh.coordinates()) < self.goal_vertices * self.initial_num_node
+        if(vert_thresh):
+            print("\nMAXIMUM REMOVALS REACHED\n")
 
         if(drag_reward == np.nan):
             print(self.get_state())
