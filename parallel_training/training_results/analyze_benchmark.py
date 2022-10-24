@@ -8,13 +8,16 @@ from scipy import stats
 import os
 from matplotlib.ticker import FormatStrFormatter
 
-SHOW_INTERPOLATION = True
+SHOW_INTERPOLATION = False
+#save_dir = "ys930_ray_tuned"
+#save_dir = "ys930_ray_try_again"
+#save_dir = "ys930_ray_last_try"
+#save_dir = "ys930_ray_last_try"
+save_dir = "ys930_ray_scheduler"
+FINAL_IDX = -1
 
 # New ys930 drag trajectory plots
 if(True):
-    #save_dir = "ys930_ray_parallel_training"
-    save_dir = "ys930_ray_recreate"
-    save_dir = "ys930_ray_more_exploit"
     data = pd.read_csv("./benchmark_results/smooth_ys930_1.0_0.001_smooth_benchmark.csv")
     
     # Screen coarse meshes since they have inconsistent results
@@ -45,7 +48,10 @@ if(True):
     # Load drag trajectory and plot
     drag_traj = np.load("./{}/deployed/{}_drag_trajectory.npy".format(save_dir, save_dir), allow_pickle=True)
     est_drag_traj = np.load("./{}/deployed/{}_interpolate_drag_trajectory.npy".format(save_dir, save_dir), allow_pickle=True)
+    #drag_traj = np.load("./{}/deployed/restart_restart_restart_{}_drag_trajectory.npy".format(save_dir, save_dir), allow_pickle=True)
+    #est_drag_traj = np.load("./{}/deployed/restart_restart_restart_{}_interpolate_drag_trajectory.npy".format(save_dir, save_dir), allow_pickle=True)
     d_idx = drag_traj.shape[1]//2
+    l_idx = drag_traj.shape[1]-1
 
     # Plot drag draj
     ax.plot(drag_traj[:,0], np.abs(drag_traj[:,d_idx]), zorder=-1, label="Refinement Path", color='r', lw=1.5)
@@ -53,7 +59,7 @@ if(True):
         ax.plot(est_drag_traj[:,0], np.abs(est_drag_traj[:,d_idx]), zorder=-1, label="Interpolated Refinement Path", color='g', lw=1.5)
 
     # Last value is special
-    ax.scatter(drag_traj[:,0][-1], np.abs(drag_traj[:,d_idx][-1]), marker='*', s=200,
+    ax.scatter(drag_traj[:,0][FINAL_IDX], np.abs(drag_traj[:,d_idx][FINAL_IDX]), marker='*', s=200,
                color='goldenrod', edgecolor='k', lw=1.5, label="Refined Airfoil")
 
     # Original value
@@ -71,8 +77,6 @@ if(True):
     axins.scatter(drag_traj[0][0],
                np.abs(drag_traj[0][d_idx]), marker='p', lw=3,
                s=200, label="Original Airfoil", edgecolor='k', color='magenta')
-    axins.plot(est_drag_traj[:,0],
-               np.abs(est_drag_traj[:,d_idx]), zorder=-1, color='g')
     axins.axhline(np.abs(big_data['DRAG'].values[0]), color='#888888', lw=2, linestyle='--')
 
     if(SHOW_INTERPOLATION):
@@ -81,8 +85,9 @@ if(True):
 
     axins.axhline(np.abs(drag_traj[0][d_idx]), color='orchid', lw=2, linestyle='--', label="Original Value", zorder=-1)
     axins.plot(drag_traj[:,0], np.abs(drag_traj[:,d_idx]), zorder=-1, label="Refinement Path", color='r', lw=1.5)
-    axins.plot(est_drag_traj[:,0], np.abs(est_drag_traj[:,d_idx]), zorder=-1, label="Refinement Path", color='g', lw=1.5)
-    axins.scatter(drag_traj[:,0][-1], np.abs(drag_traj[:,d_idx][-1]), marker='*', s=200,
+    if(SHOW_INTERPOLATION):
+        axins.plot(est_drag_traj[:,0], np.abs(est_drag_traj[:,d_idx]), zorder=-1, label="Refinement Path", color='g', lw=1.5)
+    axins.scatter(drag_traj[:,0][FINAL_IDX], np.abs(drag_traj[:,d_idx][FINAL_IDX]), marker='*', s=200,
                color='goldenrod', edgecolor='k', lw=1.5, label="Refined Airfoil")
 
     axins.set_xticks([i for i in np.arange(730, 890, 50)])
@@ -127,27 +132,42 @@ if(True):
     plt.savefig("./{}/deployed/{}_drag_improvement.png".format(save_dir, save_dir),
                 bbox_extra_artists=(lgd, axins), bbox_inches='tight')
 
+    #print()
+    #print("INITIAL DRAG:\t{0:.8f}".format(drag_traj[0][0]))
+    #print("FINAL DRAG:\t{0:.8f}".format(drag_traj[-1][0]))
+    #print("DRAG ERROR:\t{0:.5f}%".format(100*np.abs(drag_traj[0][0] - drag_traj[-2][0])/np.abs(drag_traj[0][0])))
+    #print()
+    #print("INITIAL LIFT:\t{0:.8f}".format(drag_traj[0][2]))
+    #print("FINAL LIFT:\t{0:.8f}".format(drag_traj[-1][2]))
+    #print("LIFT ERROR:\t{0:.5f}%".format(100*np.abs(drag_traj[0][2] - drag_traj[-2][2])/np.abs(drag_traj[0][2])))
+    #print()
+    #print("INITIAL VERTICES:\t{0:.5f}".format(drag_traj[0][1]))
+    #print("FINAL VERTICES:\t{0:.5f}".format(drag_traj[-1][1]))
+    #print("VERTICES REMOVED:\t{0:.5f}".format(drag_traj[0][1] - drag_traj[-1][1]))
+    #print("VERTICES PERCENT: {0:.3f}%".format(100*(1-drag_traj[-2][1]/drag_traj[0][1])))
     print()
-    print("INITIAL DRAG:\t{0:.8f}".format(drag_traj[0][0]))
-    print("FINAL DRAG:\t{0:.8f}".format(drag_traj[-1][0]))
-    print("DRAG ERROR:\t{0:.5f}%".format(100*np.abs(drag_traj[0][0] - drag_traj[-2][0])/np.abs(drag_traj[0][0])))
+    print("INITIAL DRAG:\t{0:.8f}".format(drag_traj[0][d_idx]))
+    print("FINAL DRAG:\t{0:.8f}".format(drag_traj[FINAL_IDX][d_idx]))
+    print("DRAG ERROR:\t{0:.5f}%".format(100*np.abs(drag_traj[0][d_idx] - drag_traj[FINAL_IDX][d_idx])/np.abs(drag_traj[0][d_idx])))
     print()
-    print("INITIAL LIFT:\t{0:.8f}".format(drag_traj[0][2]))
-    print("FINAL LIFT:\t{0:.8f}".format(drag_traj[-1][2]))
-    print("LIFT ERROR:\t{0:.5f}%".format(100*np.abs(drag_traj[0][2] - drag_traj[-2][2])/np.abs(drag_traj[0][2])))
+    print("INITIAL LIFT:\t{0:.8f}".format(drag_traj[0][l_idx]))
+    print("FINAL LIFT:\t{0:.8f}".format(drag_traj[FINAL_IDX][l_idx]))
+    print("LIFT ERROR:\t{0:.5f}%".format(100*np.abs(drag_traj[0][l_idx] - drag_traj[FINAL_IDX][l_idx])/np.abs(drag_traj[0][l_idx])))
     print()
-    print("INITIAL VERTICES:\t{0:.5f}".format(drag_traj[0][1]))
-    print("FINAL VERTICES:\t{0:.5f}".format(drag_traj[-1][1]))
-    print("VERTICES REMOVED:\t{0:.5f}".format(drag_traj[0][1] - drag_traj[-1][1]))
-    print("VERTICES PERCENT: {0:.3f}%".format(100*(1-drag_traj[-2][1]/drag_traj[0][1])))
+    print("INITIAL VERTICES:\t{0:.5f}".format(drag_traj[0][0]))
+    print("FINAL VERTICES:\t\t{0:.5f}".format(drag_traj[FINAL_IDX][0]))
+    print("VERTICES REMOVED:\t{0:.5f}".format(drag_traj[0][0] - drag_traj[FINAL_IDX][0]))
+    print("VERTICES PERCENT:\t{0:.3f}%".format(100*(1-drag_traj[FINAL_IDX][0]/drag_traj[0][0])))
     #plt.show()
 
 
 # New ys930 lift trajectory plots
 if(True):
     #save_dir = "ys930_ray_parallel_training"
-    save_dir = "ys930_ray_recreate"
-    save_dir = "ys930_ray_more_exploit"
+    #save_dir = "ys930_ray_recreate"
+    #save_dir = "ys930_ray_more_exploit"
+    #save_dir = "ys930_ray_faster_learning"
+    #save_dir = "ys930_ray_tuned"
     data = pd.read_csv("./benchmark_results/smooth_ys930_1.0_0.001_smooth_benchmark.csv")
     
     # Screen coarse meshes since they have inconsistent results
@@ -178,6 +198,8 @@ if(True):
     # Load drag trajectory and plot
     drag_traj = np.load("./{}/deployed/{}_drag_trajectory.npy".format(save_dir, save_dir), allow_pickle=True)
     est_drag_traj = np.load("./{}/deployed/{}_interpolate_drag_trajectory.npy".format(save_dir, save_dir), allow_pickle=True)
+    #drag_traj = np.load("./{}/deployed/restart_restart_restart_{}_drag_trajectory.npy".format(save_dir, save_dir), allow_pickle=True)
+    #est_drag_traj = np.load("./{}/deployed/restart_restart_restart_{}_interpolate_drag_trajectory.npy".format(save_dir, save_dir), allow_pickle=True)
     l_idx = drag_traj.shape[1]-1
 
     # Plot drag draj
@@ -186,7 +208,7 @@ if(True):
         ax.plot(est_drag_traj[:,0], np.abs(est_drag_traj[:,l_idx]), zorder=-1, label="Interpolated Refinement Path", color='g', lw=1.5)
 
     # Last value is special
-    ax.scatter(drag_traj[:,0][-2], np.abs(drag_traj[:,l_idx][-2]), marker='*', s=200,
+    ax.scatter(drag_traj[:,0][FINAL_IDX], np.abs(drag_traj[:,l_idx][FINAL_IDX]), marker='*', s=200,
                color='goldenrod', edgecolor='k', lw=1.5, label="Refined Airfoil")
 
     # Original value
@@ -205,18 +227,16 @@ if(True):
     axins.scatter(drag_traj[0][0],
                np.abs(drag_traj[0][l_idx]), marker='p', lw=3,
                s=200, label="Original Airfoil", edgecolor='k', color='magenta')
-    axins.plot(est_drag_traj[:,0],
-               np.abs(est_drag_traj[:,l_idx]), zorder=-1, color='g')
     axins.axhline(np.abs(big_data['LIFT'].values[0]), color='#888888', lw=2, linestyle='--')
 
     if(SHOW_INTERPOLATION):
         axins.axhline(1.001*np.abs(data['LIFT'].values[target_idx]), color='#aaaaaa', lw=2, linestyle='--')
         axins.axhline(0.999*np.abs(data['LIFT'].values[target_idx]), color='#aaaaaa', lw=2, linestyle='--')
+        axins.plot(est_drag_traj[:,0], np.abs(est_drag_traj[:,l_idx]), zorder=-1, label="Refinement Path", color='g', lw=1.5)
 
     axins.axhline(np.abs(drag_traj[0][l_idx]), color='orchid', lw=2, linestyle='--', label="Original Value", zorder=-1)
     axins.plot(drag_traj[:,0], np.abs(drag_traj[:,l_idx]), zorder=-1, label="Refinement Path", color='r', lw=1.5)
-    axins.plot(est_drag_traj[:,0], np.abs(est_drag_traj[:,l_idx]), zorder=-1, label="Refinement Path", color='g', lw=1.5)
-    axins.scatter(drag_traj[:,0][-1], np.abs(drag_traj[:,l_idx][-1]), marker='*', s=200,
+    axins.scatter(drag_traj[:,0][FINAL_IDX], np.abs(drag_traj[:,l_idx][FINAL_IDX]), marker='*', s=200,
                color='goldenrod', edgecolor='k', lw=1.5, label="Refined Airfoil")
 
     axins.set_xticks([i for i in np.arange(730, 890, 50)])
@@ -264,63 +284,90 @@ if(True):
 
     print()
     print("INITIAL DRAG:\t{0:.8f}".format(drag_traj[0][d_idx]))
-    print("FINAL DRAG:\t{0:.8f}".format(drag_traj[-1][d_idx]))
-    print("DRAG ERROR:\t{0:.5f}%".format(100*np.abs(drag_traj[0][d_idx] - drag_traj[-1][d_idx])/np.abs(drag_traj[0][d_idx])))
+    print("FINAL DRAG:\t{0:.8f}".format(drag_traj[FINAL_IDX][d_idx]))
+    print("DRAG ERROR:\t{0:.5f}%".format(100*np.abs(drag_traj[0][d_idx] - drag_traj[FINAL_IDX][d_idx])/np.abs(drag_traj[0][d_idx])))
     print()
     print("INITIAL LIFT:\t{0:.8f}".format(drag_traj[0][l_idx]))
-    print("FINAL LIFT:\t{0:.8f}".format(drag_traj[-1][l_idx]))
-    print("LIFT ERROR:\t{0:.5f}%".format(100*np.abs(drag_traj[0][l_idx] - drag_traj[-1][l_idx])/np.abs(drag_traj[0][l_idx])))
+    print("FINAL LIFT:\t{0:.8f}".format(drag_traj[FINAL_IDX][l_idx]))
+    print("LIFT ERROR:\t{0:.5f}%".format(100*np.abs(drag_traj[0][l_idx] - drag_traj[FINAL_IDX][l_idx])/np.abs(drag_traj[0][l_idx])))
     print()
     print("INITIAL VERTICES:\t{0:.5f}".format(drag_traj[0][0]))
-    print("FINAL VERTICES:\t\t{0:.5f}".format(drag_traj[-1][0]))
-    print("VERTICES REMOVED:\t{0:.5f}".format(drag_traj[0][0] - drag_traj[-1][0]))
-    print("VERTICES PERCENT:\t{0:.3f}%".format(100*(1-drag_traj[-1][0]/drag_traj[0][0])))
+    print("FINAL VERTICES:\t\t{0:.5f}".format(drag_traj[FINAL_IDX][0]))
+    print("VERTICES REMOVED:\t{0:.5f}".format(drag_traj[0][0] - drag_traj[FINAL_IDX][0]))
+    print("VERTICES PERCENT:\t{0:.3f}%".format(100*(1-drag_traj[FINAL_IDX][0]/drag_traj[0][0])))
     #plt.show()
 
 
 # Check interpolation at each timestep
 if(True):
     #save_dir = "ys930_ray_parallel_training"
-    save_dir = "ys930_ray_recreate"
-    save_dir = "ys930_ray_more_exploit"
-    fig, ax = plt.subplots(nrows=2, ncols=5, figsize=(20,7))
+    #save_dir = "ys930_ray_recreate"
+    #save_dir = "ys930_ray_more_exploit"
+    #save_dir = "ys930_ray_faster_learning"
+    #save_dir = "ys930_ray_tuned"
+    vertical = True
+    if(vertical):
+        fig, ax = plt.subplots(nrows=5, ncols=2, figsize=(7,20))
+    else:
+        fig, ax = plt.subplots(nrows=2, ncols=5, figsize=(20,7))
 
     # Load drag trajectory and plot
     drag_traj = np.load("./{}/deployed/{}_drag_trajectory.npy".format(save_dir, save_dir), allow_pickle=True)
     est_drag_traj = np.load("./{}/deployed/{}_interpolate_drag_trajectory.npy".format(save_dir, save_dir), allow_pickle=True)
+    #drag_traj = np.load("./{}/deployed/restart_restart_restart_{}_drag_trajectory.npy".format(save_dir, save_dir), allow_pickle=True)
+    #est_drag_traj = np.load("./{}/deployed/restart_restart_restart_{}_interpolate_drag_trajectory.npy".format(save_dir, save_dir), allow_pickle=True)
     d_idx = drag_traj.shape[1]//2
     l_idx = drag_traj.shape[1]-1
 
     # Plot drag draj
     for i in range(d_idx):
 
-        ax[0][i].plot(drag_traj[:,0], np.abs(drag_traj[:,i+1]), zorder=-1, label="Refinement Path", color='r', lw=1.5)
-        ax[1][i].plot(drag_traj[:,0], np.abs(drag_traj[:,i+d_idx+1]), zorder=-1, label="Refinement Path", color='r', lw=1.5)
+        if(vertical):
+            c1, c2, c3, c4 = i, i, 0, 1
+        else:
+            c1, c2, c3, c4 = 0, 1, i, i
+        ax[c1][c3].plot(drag_traj[:,0], np.abs(drag_traj[:,i+1]), zorder=-1, label="Refinement Path", color='r', lw=1.5)
+        ax[c2][c4].plot(drag_traj[:,0], np.abs(drag_traj[:,i+d_idx+1]), zorder=-1, label="Refinement Path", color='r', lw=1.5)
 
-        ax[0][i].axhline(np.abs(drag_traj[0][i+1]), color='#888888', lw=2, linestyle='--')
-        ax[0][i].axhline(1.001*np.abs(drag_traj[0][i+1]), color='#aaaaaa', lw=2, linestyle='--')
-        ax[0][i].axhline(0.999*np.abs(drag_traj[0][i+1]), color='#aaaaaa', lw=2, linestyle='--')
+        ax[c1][c3].axhline(np.abs(drag_traj[0][i+1]), color='#888888', lw=2, linestyle='--')
+        ax[c1][c3].axhline(1.001*np.abs(drag_traj[0][i+1]), color='#aaaaaa', lw=2, linestyle='--')
+        ax[c1][c3].axhline(0.999*np.abs(drag_traj[0][i+1]), color='#aaaaaa', lw=2, linestyle='--')
 
-        ax[1][i].axhline(np.abs(drag_traj[0][i+d_idx+1]), color='#888888', lw=2, linestyle='--')
-        ax[1][i].axhline(1.001*np.abs(drag_traj[0][i+d_idx+1]), color='#aaaaaa', lw=2, linestyle='--')
-        ax[1][i].axhline(0.999*np.abs(drag_traj[0][i+d_idx+1]), color='#aaaaaa', lw=2, linestyle='--')
+        ax[c2][c4].axhline(np.abs(drag_traj[0][i+d_idx+1]), color='#888888', lw=2, linestyle='--')
+        ax[c2][c4].axhline(1.001*np.abs(drag_traj[0][i+d_idx+1]), color='#aaaaaa', lw=2, linestyle='--')
+        ax[c2][c4].axhline(0.999*np.abs(drag_traj[0][i+d_idx+1]), color='#aaaaaa', lw=2, linestyle='--')
         if(SHOW_INTERPOLATION):
-            ax[0][i].plot(est_drag_traj[:,0], np.abs(est_drag_traj[:,i+1]), zorder=-1,
+            ax[c1][c3].plot(est_drag_traj[:,0], np.abs(est_drag_traj[:,i+1]), zorder=-1,
                           label="Interpolated Refinement Path", color='g', lw=1.5)
-            ax[1][i].plot(est_drag_traj[:,0], np.abs(est_drag_traj[:,i+d_idx+1]), zorder=-1,
+            ax[c2][c4].plot(est_drag_traj[:,0], np.abs(est_drag_traj[:,i+d_idx+1]), zorder=-1,
                           label="Interpolated Refinement Path", color='g', lw=1.5)
 
-        ax[0][i].set_title("Snapshot: {}".format(i+1), fontsize=14)
-        ax[1][i].set_xlabel("Vertices".format(i+1), fontsize=14)
+        if(vertical):
+            ax[c1][c3].set_ylabel("Snapshot: {}".format(i+1), fontsize=14)
+            #ax[c2][c4].set_ylabel("Vertices".format(i+1), fontsize=14)
+        else:
+            ax[c1][c3].set_title("Snapshot: {}".format(i+1), fontsize=14)
+            ax[c2][c4].set_xlabel("Vertices".format(i+1), fontsize=14)
 
-        ax[0][i].set_xticks([], [])
-        #ax[1][i].set_xticks([], [])
-        ax[0][i].set_yticks([], [])
-        ax[1][i].set_yticks([], [])
+        ax[c1][c3].set_yticks([], [])
+        ax[c2][c4].set_yticks([], [])
+        if(vertical):# and (c2!=(d_idx-1))):
+            if(c2 != (d_idx-1)):
+                ax[c2][c4].set_xticks([], [])
+                ax[c1][c3].set_xticks([], [])
+        else:
+            ax[c1][c3].set_xticks([], [])
 
 
-    ax[0][0].set_ylabel("Drag", fontsize=14)
-    ax[1][0].set_ylabel("Lift", fontsize=14)
+    if(vertical):
+        ax[0][0].set_title("Drag", fontsize=14)
+        ax[0][1].set_title("Lift", fontsize=14)
+        ax[-1][0].set_xlabel("Vertices", fontsize=14)
+        ax[-1][1].set_xlabel("Vertices", fontsize=14)
+    else:
+        ax[0][0].set_ylabel("Drag", fontsize=14)
+        ax[1][0].set_ylabel("Lift", fontsize=14)
+
     #plt.axis('off')
     custom_lines = [
             Line2D([0], [0], color='red', lw=2),
@@ -329,7 +376,11 @@ if(True):
             Line2D([0], [0], color='#888888', lw=2, linestyle='--'),
     ]
     labels = ["Calculated Path", "Interpolation Path", "Original Value", "Error Bounds"]
-    lgd = fig.legend(custom_lines, labels, fontsize=14, ncol=4, bbox_to_anchor=(0.75, 0.04))
+
+    if(vertical):
+        lgd = fig.legend(custom_lines, labels, fontsize=14, ncol=2, bbox_to_anchor=(0.8, 0.08))
+    else:
+        lgd = fig.legend(custom_lines, labels, fontsize=14, ncol=4, bbox_to_anchor=(0.75, 0.04))
 
     plt.savefig("./{}/deployed/{}_comparison.png".format(save_dir, save_dir),
                 bbox_extra_artists=(lgd,), bbox_inches='tight')
@@ -341,25 +392,29 @@ if(False):
     fig, ax = plt.subplots(figsize=(10,8))
     xs = np.linspace(100., 100.2, 1001)
 
-    f = lambda x: 2*np.exp(-50*np.abs(100 - x)/np.abs(100.)) - 1
-    ax.plot(xs, f(xs), lw=2, color='sienna', label=r"$K=50$")
+    #f = lambda x: 2*np.exp(-50*np.abs(100 - x)/np.abs(100.)) - 1
+    #ax.plot(xs, f(xs), lw=2, color='sienna', label=r"$K=50$")
             #label=r"$2\exp\left(\frac{-50\left|d_{gt} - d_{n} \right|}{\left|d_{gt} \right|}\right) - 1$")
 
-    f = lambda x: 2*np.exp(-1386/2*np.abs(100 - x)/np.abs(100.)) - 1
-    ax.plot(xs, f(xs), lw=2, color='k', label=r"$K=691$")
+    f = lambda x: 2*np.exp(-693.15*np.abs(100 - x)/np.abs(100.)) - 1
+    ax.plot(xs, f(xs), lw=2, color='k', label=r"$K=693.15$")
             #label=r"$2\exp\left(\frac{-691\left|d_{gt} - d_{n} \right|}{\left|d_{gt} \right|}\right) - 1$")
-    f = lambda x: 2*np.exp(-1386*np.abs(100 - x)/np.abs(100.)) - 1
-    ax.plot(xs, f(xs), lw=2, color='b', label=r"$K=1386$")
             #label=r"$2\exp\left(\frac{-1386\left|d_{gt} - d_{n} \right|}{\left|d_{gt} \right|}\right) - 1$")
 
-    f = lambda x: 2*np.exp(-5000*np.abs(100 - x)/np.abs(100.)) - 1
-    ax.plot(xs, f(xs), lw=2, color='g', label=r"$K=5000$")
+    f = lambda x: 2*np.exp(-1386.29*np.abs(100 - x)/np.abs(100.)) - 1
+    ax.plot(xs, f(xs), lw=2, color='g', label=r"$K=1386.29$")
+
+    f = lambda x: 2*np.exp(-2772.59*np.abs(100 - x)/np.abs(100.)) - 1
+    ax.plot(xs, f(xs), lw=2, color='b', label=r"$K=2772.59$")
+    #f = lambda x: 2*np.exp(-5000*np.abs(100 - x)/np.abs(100.)) - 1
+    #ax.plot(xs, f(xs), lw=2, color='g', label=r"$K=5000$")
             #label=r"$2\exp\left(\frac{-5000\left|d_{gt} - d_{n} \right|}{\left|d_{gt} \right|}\right) - 1$")
 
     #f = lambda x: 2*np.exp(-50*np.abs(100 - x)/np.abs(100.)) - 1
     #ax.plot(xs, f(xs), lw=2, color='k')
 
-    ax.axvline(100.05, color='lightcoral', lw=2, label="Half Accuuracy Threshold")
+    ax.axvline(100.025, color='lightcoral', lw=2, label="Quarter Accuracy Threshold", linestyle=':')
+    ax.axvline(100.05, color='tomato', lw=2, label="Half Accuracy Threshold", linestyle='-.')
     #ax.axvline(99.95, color='lightcoral', lw=2, label="Half Accuracy Threshold")
     ax.axvline(100.1, color='red', label="Accuracy Threshold", lw=2)
     #ax.axvline(99.9, color='red', lw=2)

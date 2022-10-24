@@ -404,8 +404,8 @@ class ParallelMultiSnapshotEnv2DAirfoil(Env):
         #raise
 
         # Drag reward
-        #drag_factor = -2*np.log(0.5)/self.threshold
-        drag_factor = -4*np.log(0.5)/self.threshold
+        drag_factor = -2*np.log(0.5)/self.threshold
+        #drag_factor = -4*np.log(0.5)/self.threshold
         #drag_factor = 5000
         error_val = np.linalg.norm(np.abs(self.gt_drag - self.new_drags)/np.abs(self.gt_drag))
         drag_reward = 2*np.exp(-drag_factor*error_val) - 1

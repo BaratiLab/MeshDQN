@@ -16,14 +16,47 @@ from matplotlib import pyplot as plt
 
 #PREFIX = 'ys930_ray_recreate'
 PREFIX = 'ys930_ray_8parallel'
+RESTART = False
 
 def plot(PREFIX):
-    actions = np.load("./{}/{}_actions.npy".format(PREFIX, PREFIX), allow_pickle=True)
-    print(len(actions))
-    rewards = np.load("./{}/{}_rewards.npy".format(PREFIX, PREFIX), allow_pickle=True)
-    losses = np.load("./{}/{}_losses.npy".format(PREFIX, PREFIX), allow_pickle=True)
-    losses = losses[losses != np.array(None)]
-    epss = np.load("./{}/{}_eps.npy".format(PREFIX, PREFIX), allow_pickle=True)
+    if(RESTART):
+        actions = np.load("./{}/{}_RESTART_RESTART_RESTART_actions.npy".format(PREFIX, PREFIX), allow_pickle=True)
+        rewards = np.load("./{}/{}_RESTART_RESTART_RESTART_rewards.npy".format(PREFIX, PREFIX), allow_pickle=True)
+        losses = np.load("./{}/{}_RESTART_RESTART_RESTART_losses.npy".format(PREFIX, PREFIX), allow_pickle=True)
+        losses = losses[losses != np.array(None)]
+        epss = np.load("./{}/{}_RESTART_RESTART_RESTART_eps.npy".format(PREFIX, PREFIX), allow_pickle=True)
+    else:
+        while(True):
+            try:
+                actions = np.load("./{}/{}_actions.npy".format(PREFIX, PREFIX), allow_pickle=True)
+                break
+            except OSError:
+                pass
+        while(True):
+            try:
+                rewards = np.load("./{}/{}_rewards.npy".format(PREFIX, PREFIX), allow_pickle=True)
+                break
+            except OSError:
+                pass
+        while(True):
+            try:
+                losses = np.load("./{}/{}_losses.npy".format(PREFIX, PREFIX), allow_pickle=True)
+                break
+            except OSError:
+                pass
+        while(True):
+            try:
+                losses = losses[losses != np.array(None)]
+                break
+            except OSError:
+                pass
+        while(True):
+            try:
+                epss = np.load("./{}/{}_eps.npy".format(PREFIX, PREFIX), allow_pickle=True)
+                break
+            except OSError:
+                pass
+
     print("CURRENT EPSILON:\t\t{0:.5f} AT STEP: {1}".format(epss[-1], len(losses)))
     print("OPTIMIZER STEPS: {}".format(len(losses)))
     print(len(actions), np.hstack(actions).shape)
@@ -53,8 +86,10 @@ def plot(PREFIX):
         print()
     
     num_steps = len(ep_rews)
-    for i in range(num_steps - 10, num_steps):
-        print(i, len(rewards[i]), ep_rews[i])
+    #for i in range(num_steps - 10, num_steps):
+    for i in range(1, 11)[::-1]:
+        num_removals = sum(np.array(actions[-i]) != 180)
+        print(i, num_removals, len(rewards[-i]), ep_rews[-i])
     
     print(actions.shape)
     #print("CURRENT EPSILON:\t\t{0:.5f}".format(epss[-1]))
@@ -73,7 +108,7 @@ def plot(PREFIX):
         ax.plot(range(len(losses))[199:], _movingaverage(losses, 200), label="200 Step Window")
     except ValueError:
         ax.plot(losses)
-        pass
+        #pass
     try:
         ax.plot(range(len(losses))[499:], _movingaverage(losses, 500), label="500 Step Window")
     except ValueError:
@@ -91,8 +126,13 @@ def plot(PREFIX):
         ax.plot(range(len(losses))[49999:], _movingaverage(losses, 50000), label="50000 Step Window")
     except ValueError:
         pass
+    #try:
+    #    ax.plot(range(len(losses))[499999:], _movingaverage(losses, 500000), label="500000 Step Window")
+    #except ValueError:
+    #    pass
     _, counts = np.unique(np.hstack(actions), return_counts=True)
     percents = counts / sum(counts)
+    print("200 STEP WINDOW LOSS: {} AT STEP: {}".format(_movingaverage(losses, 200)[-1], len(losses)))
     print("DO NOTHING PERCENT: {}, MEDIAN: {}".format(100*percents[-1], np.median(100*percents)))
     print("DO NOTHING RATIO: {}".format(100*percents[-1]/np.median(100*percents)))
     print("DO NOTHING NUMBER: {}".format(counts[-1]))
@@ -123,7 +163,14 @@ ps = [
     #'ys930_ray_recreate',
     #'ys930_ray_8parallel',
     #'ys930_ray_more_exploit',
-    'ys930_ray_faster_learning'
+    #'ys930_ray_faster_learning',
+    #'ys930_ray_small_lr_tuning'
+    #'ys930_ray_small_lr_tuning'
+    #'ys930_ray_tuned',
+    #'ys930_ray_original_hyperparameters'
+    #'ys930_ray_try_again'
+    #'ys930_ray_last_try'
+    'ys930_ray_scheduler'
 ]
 for p in ps:
     plot(p)

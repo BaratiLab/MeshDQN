@@ -25,8 +25,8 @@ from torch_geometric.loader import DataLoader
 import math
 
 
-ray.init()
-#ray.init(log_to_driver=False)
+#ray.init()
+ray.init(log_to_driver=False)
 SEED = 1370
 #SEED = 137*137
 torch.manual_seed(SEED)
@@ -86,8 +86,38 @@ class DataHandler(object):
         self.actions = []
         self.epss = []
 
+        if(RESTART):
+            for i in range(RESTART_NUM-1):
+                self.save_dir += "RESTART_"
+            try:
+                self.rewards = list(np.load(self.save_dir + "reward.npy", allow_pickle=True))
+            except OSError:
+                self.rewards = []
+            try:
+                self.ep_rewards = list(np.load(self.save_dir + "rewards.npy", allow_pickle=True))
+            except OSError:
+                self.ep_rewards = []
+            try:
+                self.losses = list(np.load(self.save_dir + "losses.npy", allow_pickle=True))
+            except OSError:
+                self.losses = []
+            try:
+                self.actions = list(np.load(self.save_dir + "actions.npy", allow_pickle=True))
+            except OSError:
+                self.actions = []
+            try:
+                self.epss = list(np.load(self.save_dir + "eps.npy", allow_pickle=True))
+            except OSError:
+                self.epss = []
+            self.save_dir += "RESTART_"
+            print("\n\nWRITING\n\n")
+            self.write()
+
     def add_eps(self, eps):
         self.epss.append(eps)
+
+    def num_eps(self):
+        return len(self.epss)
 
     def add_loss(self, loss):
         self.losses.append(loss)
@@ -130,9 +160,20 @@ class ParameterServer(object):
         self.policy_net_1.set_num_nodes(NUM_INPUTS)
         self.policy_net_2.set_num_nodes(NUM_INPUTS)
 
+        if(RESTART):
+            for i in range(RESTART_NUM-1):
+                self.PREFIX = "restart_" + self.PREFIX
+            self.policy_net_1.load_state_dict(torch.load(
+                                    "./{}/{}policy_net_1.pt".format(save_dir, PREFIX)))
+            self.policy_net_2.load_state_dict(torch.load(
+                                    "./{}/{}policy_net_2.pt".format(save_dir, PREFIX)))
+            self.PREFIX = "restart_" + self.PREFIX
+
         self.optimizer_fn = lambda parameters: optim.Adam(parameters, lr=LEARNING_RATE,
                                                           weight_decay=WEIGHT_DECAY)
         self.optimizer = self.optimizer_fn(self.policy_net_1.parameters())
+        self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer,
+                                       milestones=[500000, 1000000, 1500000], gamma=0.1)
         self.num_grads = 0
         self.select = True
 
@@ -142,6 +183,7 @@ class ParameterServer(object):
 
         #self.optimizer.zero_grad()
         self.optimizer.step()
+        self.scheduler.step()
         self.num_grads += 1
 
         if(self.select):
@@ -179,6 +221,11 @@ class DataWorker(object):
         self.policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1).float()
         self.policy_net_1.set_num_nodes(NUM_INPUTS)
         self.policy_net_2.set_num_nodes(NUM_INPUTS)
+        if(RESTART):
+            self.policy_net_1.load_state_dict(torch.load(
+                                    "./{}/{}policy_net_1.pt".format(save_dir, PREFIX)))
+            self.policy_net_2.load_state_dict(torch.load(
+                                    "./{}/{}policy_net_2.pt".format(save_dir, PREFIX)))
         self.num_grads = 0
         self.select = True
 
@@ -261,6 +308,7 @@ criterion = torch.nn.HuberLoss()
 losses = []
 def optimize_model():
     if ray.get(memory.size.remote()) < BATCH_SIZE:
+    #if ray.get(memory.size.remote()) < BATCH_SIZE:
     #if ray.get(memory.size.remote()) < 10*BATCH_SIZE:
         return
 
@@ -294,7 +342,17 @@ RESTART = False
 #PREFIX = 'ys930_ray_recreate_'
 #PREFIX = 'ys930_ray_8parallel_'
 #PREFIX = 'ys930_ray_more_exploit_'
-PREFIX = 'ys930_ray_faster_learning_'
+#PREFIX = 'ys930_ray_faster_learning_'
+#PREFIX = 'ys930_ray_small_lr_tuning_'
+#PREFIX = 'ys930_ray_small_lr_tuning_'
+
+#PREFIX = 'ys930_ray_tuned_'  # NEED TO IMPLEMENT RESTARTING FOR THIS
+
+#PREFIX = 'ys930_ray_original_hyperparameters_'
+#PREFIX = 'ys930_ray_try_again_'
+#PREFIX = 'ys930_ray_try_again_'
+#PREFIX = 'ys930_ray_last_try_'
+PREFIX = 'ys930_ray_scheduler_'
 
 # Save directory
 save_dir = 'training_results'
@@ -302,11 +360,21 @@ if(not os.path.exists("./{}".format(save_dir))):
     os.makedirs(save_dir)
 if(not os.path.exists("./{}/{}".format(save_dir, PREFIX[:-1]))):
     os.makedirs(save_dir + "/" + PREFIX[:-1])
+
 save_dir += '/' + PREFIX[:-1]
 
 # Load config
-with open("../configs/ray_{}.yaml".format(PREFIX.split("_")[0]), 'r') as stream:
-    flow_config = yaml.safe_load(stream)
+if(RESTART):
+    print("./{}/config.yaml".format(save_dir))
+    with open("./{}/config.yaml".format(save_dir, PREFIX.split("_")[0]), 'r') as stream:
+        flow_config = yaml.safe_load(stream)
+    RESTART_NUM = 0
+    for f in os.listdir(save_dir):
+        RESTART_NUM += int("{}policy_net_1.pt".format(PREFIX) in f)
+    print("\n\nRESTART NUM: {}\n\n".format(RESTART_NUM))
+else:
+    with open("../configs/ray_{}.yaml".format(PREFIX.split("_")[0]), 'r') as stream:
+        flow_config = yaml.safe_load(stream)
 
 # Hyperparameters to tune
 GAMMA = flow_config['epsilon']['gamma']
@@ -325,9 +393,10 @@ NUM_PARALLEL = int(flow_config['agent_params']['num_parallel'])
 eps_threshs = []
 
 # Save config to directory
-with open(save_dir + "/config.yaml", 'w') as fout:
-    yaml.dump(flow_config, fout)
-fout.close()
+if(not RESTART):
+    with open(save_dir + "/config.yaml", 'w') as fout:
+        yaml.dump(flow_config, fout)
+    fout.close()
 
 # Set up environment
 env = Env2DAirfoil(flow_config)
@@ -348,7 +417,7 @@ except:
     NUM_INPUTS = 5
 
 # Set up replay memory and data handler
-memory = ReplayMemory.remote(20000)
+memory = ReplayMemory.remote(10000)
 save_str = "/home/fenics/drl_projects/MeshDQN/parallel_training/{}/{}".format(save_dir, PREFIX)
 handler = DataHandler.remote(save_str)
 
@@ -370,7 +439,7 @@ def train_loop_per_worker(training_config):
 
     # Get environment
     env = Env2DAirfoil(training_config['env_config'])
-    steps_done = 0
+    steps_done = ray.get(handler.num_eps.remote())/14
     start_ep = len(ep_reward) if(RESTART) else 0
     for episode in range(start_ep, num_episodes):
         # Analysis

@@ -28,10 +28,16 @@ f = lambda steps_done: EPS_END + (EPS_START - EPS_END) * np.exp(-steps_done/EPS_
 PREFIX = 'ys930_ray_recreate'
 PREFIX = 'ys930_ray_8parallel'
 
+RESTART = False
+
 #TODO Intrpolate original mesh to current mesh each time instead of incremental interpolation?
 def plot(PREFIX):
-    ep_reward = np.load("./{}/{}_reward.npy".format(PREFIX, PREFIX))
-    for i in range(10)[::-1]:
+    if(RESTART):
+        ep_reward = np.load("./{}/{}_RESTART_RESTART_RESTART_reward.npy".format(PREFIX, PREFIX))
+    else:
+        ep_reward = np.load("./{}/{}_reward.npy".format(PREFIX, PREFIX))
+
+    for i in range(1, 11)[::-1]:
         print(ep_reward[-i])
     
     fig, ax = plt.subplots()
@@ -54,6 +60,10 @@ def plot(PREFIX):
         ax.plot(list(range(len(ep_reward)))[4999:], _movingaverage(ep_reward, 5000), label="5000 Episode Window")
     except ValueError:
         pass
+    try:
+        ax.plot(list(range(len(ep_reward)))[19999:], _movingaverage(ep_reward, 20000), label="20000 Episode Window")
+    except ValueError:
+        pass
     ax.set_xlabel("Episode", fontsize=12)
     ax.set_ylabel("Reward", fontsize=12)
     ax.set_title("Double DQN Moving Average Reward", fontsize=14)
@@ -74,6 +84,7 @@ def plot(PREFIX):
     ax.set_ylabel("Reward", fontsize=12)
     ax.set_title("Double DQN Moving Average Reward", fontsize=14)
     ax.legend(loc='best')
+    print("SAVE TO: ./{}/{}_reward.png".format(PREFIX, PREFIX))
     plt.savefig("./{}/{}_reward.png".format(PREFIX, PREFIX))
     
     #fig, ax = plt.subplots()
@@ -84,7 +95,15 @@ ps = [
     #'ys930_ray_recreate',
     #'ys930_ray_8parallel',
     #'ys930_ray_more_exploit',
-    'ys930_ray_faster_learning'
+    #'ys930_ray_faster_learning'
+    #'ys930_ray_small_lr_tuning'
+    #'ys930_ray_tuned'
+    #'ys930_ray_tuned'
+    #'ys930_ray_tuned',
+    #'ys930_ray_original_hyperparameters'
+    #'ys930_ray_try_again',
+    #'ys930_ray_last_try'
+    'ys930_ray_scheduler'
 ]
 for p in ps:
     plot(p)
