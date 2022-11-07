@@ -2,29 +2,22 @@ import numpy as np
 from tqdm import tqdm
 from matplotlib import pyplot as plt
 
-# Good success so far
-#PREFIX = 'ys930_1386_long_interp'
-#PREFIX = 'ys930_ray_remote_dqn'
-#PREFIX = 'ys930_ray_remote_dqn_tuning'
-#PREFIX = 'ys930_ray_single_remote_dqn_tuning'
-#PREFIX = 'ys930_ray_parallel_training'
-
-#PREFIX = 'ys930_ray_small_lr_parallel_batch_training'
-
-#PREFIX = 'ys930_ray_2parallel'
-#PREFIX = 'ys930_ray_4parallel'
-
-#PREFIX = 'ys930_ray_recreate'
-PREFIX = 'ys930_ray_8parallel'
 RESTART = False
+TRANSFER = False
 
 def plot(PREFIX):
     if(RESTART):
-        actions = np.load("./{}/{}_RESTART_RESTART_RESTART_actions.npy".format(PREFIX, PREFIX), allow_pickle=True)
-        rewards = np.load("./{}/{}_RESTART_RESTART_RESTART_rewards.npy".format(PREFIX, PREFIX), allow_pickle=True)
-        losses = np.load("./{}/{}_RESTART_RESTART_RESTART_losses.npy".format(PREFIX, PREFIX), allow_pickle=True)
+        actions = np.load("./{}/{}_RESTART_actions.npy".format(PREFIX, PREFIX), allow_pickle=True)
+        rewards = np.load("./{}/{}_RESTART_rewards.npy".format(PREFIX, PREFIX), allow_pickle=True)
+        losses = np.load("./{}/{}_RESTART_losses.npy".format(PREFIX, PREFIX), allow_pickle=True)
         losses = losses[losses != np.array(None)]
-        epss = np.load("./{}/{}_RESTART_RESTART_RESTART_eps.npy".format(PREFIX, PREFIX), allow_pickle=True)
+        epss = np.load("./{}/{}_RESTART_eps.npy".format(PREFIX, PREFIX), allow_pickle=True)
+    if(TRANSFER):
+        actions = np.load("./ys930_to_ah93w145_ray_scheduler/actions.npy".format(PREFIX), allow_pickle=True)
+        rewards = np.load("./ys930_to_ah93w145_ray_scheduler/rewards.npy".format(PREFIX), allow_pickle=True)
+        losses = np.load("./ys930_to_ah93w145_ray_scheduler/losses.npy".format(PREFIX), allow_pickle=True)
+        losses = losses[losses != np.array(None)]
+        epss = np.load("./ys930_to_ah93w145_ray_scheduler/eps.npy".format(PREFIX), allow_pickle=True)
     else:
         while(True):
             try:
@@ -32,6 +25,7 @@ def plot(PREFIX):
                 break
             except OSError:
                 pass
+        rewards = np.load("./{}/{}_rewards.npy".format(PREFIX, PREFIX), allow_pickle=True)
         while(True):
             try:
                 rewards = np.load("./{}/{}_rewards.npy".format(PREFIX, PREFIX), allow_pickle=True)
@@ -66,8 +60,16 @@ def plot(PREFIX):
     
     
     ep_rews = np.empty(len(rewards))
+    longest_ep, longest_idx = 0, -1
+    num_max = 0
     for idx, r in enumerate(rewards):
         ep_rews[idx] = np.sum(r)
+        if(len(r) > longest_ep):
+            longest_ep = len(r)
+            longest_idx = idx
+        #if(len(r) == 40):
+        if(len(r) == 30):
+            num_max += 1
     
     worst = np.argmin(ep_rews)
     best = np.argmax(ep_rews)
@@ -79,17 +81,20 @@ def plot(PREFIX):
     print(actions[best])
     print(rewards[best])
     print()
-    
+
     for i in range(1, 4):
         print(actions[-i])
         print(rewards[-i])
         print()
+
+    print("\nLONGEST EPISODE IS {} WITH {} STEPS".format(longest_idx, longest_ep))
+    print("NUMBER OF MAX LENGTH EPISODES: {}\n".format(num_max))
     
     num_steps = len(ep_rews)
     #for i in range(num_steps - 10, num_steps):
     for i in range(1, 11)[::-1]:
-        num_removals = sum(np.array(actions[-i]) != 180)
-        print(i, num_removals, len(rewards[-i]), ep_rews[-i])
+        num_removals = sum(np.array(actions[-i]) != 110)
+        print(num_steps - i, num_removals, len(rewards[-i]), ep_rews[-i])
     
     print(actions.shape)
     #print("CURRENT EPSILON:\t\t{0:.5f}".format(epss[-1]))
@@ -141,7 +146,10 @@ def plot(PREFIX):
     ax.set_xlabel("Optimizer Steps", fontsize=12)
     ax.set_ylabel("Loss", fontsize=12)
     ax.legend(loc='best')
-    plt.savefig("./{}/{}_losses.png".format(PREFIX, PREFIX))
+    if(TRANSFER):
+        plt.savefig("./ys930_to_ah93w145_ray_scheduler/{}_losses.png".format(PREFIX, PREFIX))
+    else:
+        plt.savefig("./{}/{}_losses.png".format(PREFIX, PREFIX))
     #plt.show()
     
     #print(np.hstack(actions).shape)
@@ -152,25 +160,36 @@ def plot(PREFIX):
     #    print(actions[i])
     
     print(len(actions), np.hstack(actions).shape)
-    ax.hist(np.hstack(actions), bins=181, density=True)
+    if('nlf' in PREFIX):
+        ax.hist(np.hstack(actions), bins=251, density=True)
+    if('rg' in PREFIX):
+        ax.hist(np.hstack(actions), bins=111, density=True)
+    else:
+        ax.hist(np.hstack(actions), bins=181, density=True)
     ax.set_xlabel("Action", fontsize=12)
     ax.set_ylabel("Fraction of Selections", fontsize=12)
     ax.set_title("Double DQN Action Selection", fontsize=14)
-    plt.savefig("./{}/{}_action_selection.png".format(PREFIX, PREFIX))
+    if(TRANSFER):
+        plt.savefig("./ys930_to_ah93w145_ray_scheduler/{}_action_selection.png".format(PREFIX, PREFIX))
+    else:
+        plt.savefig("./{}/{}_action_selection.png".format(PREFIX, PREFIX))
     #plt.show()
         
 ps = [
-    #'ys930_ray_recreate',
-    #'ys930_ray_8parallel',
-    #'ys930_ray_more_exploit',
-    #'ys930_ray_faster_learning',
-    #'ys930_ray_small_lr_tuning'
-    #'ys930_ray_small_lr_tuning'
-    #'ys930_ray_tuned',
-    #'ys930_ray_original_hyperparameters'
-    #'ys930_ray_try_again'
-    #'ys930_ray_last_try'
-    'ys930_ray_scheduler'
+    #'nlf415_ray_scheduler',
+    #'s1020_ray_scheduler',
+    #'lwk80120k25_ray_scheduler',
+    #'ys930_ray_scheduler',
+    #'ys930_mega_parallel',
+    #'ah93w145_ray_scheduler',
+
+    #'rg1495_ray_scheduler',
+    #'rg1495_regular_ray_scheduler',
+    #'rg1495_mega_parallel',
+    #'ys930_mega_parallel',
+    #'rg1495_again_mega_parallel',
+
+    'cylinder_mega_parallel',
 ]
 for p in ps:
     plot(p)

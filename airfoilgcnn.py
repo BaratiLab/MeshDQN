@@ -19,6 +19,7 @@ if(torch.cuda.is_available()):
 else:
     print("USING CPU")
     device = torch.device("cpu")
+#device = torch.device("cpu")
 
 class NodeRemovalNet(torch.nn.Module):
     def __init__(self, output_dim, conv_width=64, topk=0.5, initial_num_nodes=None):

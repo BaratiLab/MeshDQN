@@ -25,6 +25,7 @@ from shapely.geometry import Polygon, Point
 #from multiprocessing import pool
 from joblib import Parallel, delayed
 #from pathos.multiprocessing import ProcessingPool as Pool
+import ray
 
 if(torch.cuda.is_available()):
     print("USING GPU")
@@ -34,6 +35,7 @@ else:
     device = torch.device("cpu")
 #device = torch.device("cpu")
 
+#@ray.remote
 class MultiSnapshotEnv2DAirfoil(Env):
     """
         Environment to optimize mesh around a 2D airfoil
@@ -464,27 +466,26 @@ class MultiSnapshotEnv2DAirfoil(Env):
                                    self.flow_solver.mesh.coordinates())) for p in self.p])[:,:,np.newaxis]
 
 
-    @staticmethod
+    #@staticmethod
     def _interpolate(self, idx, original_u, original_p, v_func, p_func):
         # Interpolate to new values
-        #V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 2)
-        #v_func = Function(V_new, degree=2)
-        #v_func.set_allow_extrapolation(True)
         v_func.interpolate(original_u.copy(deepcopy=True))
-
-        #P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 1)
-        #p_func = Function(P_new, degree=1)
-        #p_func.set_allow_extrapolation(True)
         p_func.interpolate(original_p.copy(deepcopy=True))
 
         # Calculate new values
         u = v_func.copy(deepcopy=True)
         u.set_allow_extrapolation(True)
         self.u[idx] = u.copy(deepcopy=True)
+        self.velocities[idx] = np.array(list(map(lambda x: u(x, allow_extrapolation=True), \
+                                        self.flow_solver.mesh.coordinates())))
 
         p = p_func.copy(deepcopy=True)
         p.set_allow_extrapolation(True)
         self.p[idx] = p.copy(deepcopy=True)
+        self.pressures[idx] = np.array(list(map(lambda x: p(x, allow_extrapolation=True), \
+                                       self.flow_solver.mesh.coordinates())))[:,np.newaxis]
+        del v_func
+        del p_func
 
 
     def _check_mesh(self, mesh, selected_coord):
@@ -494,63 +495,70 @@ class MultiSnapshotEnv2DAirfoil(Env):
             # Remesh
             old_mesh = Mesh(self.flow_solver.mesh)
             self.flow_solver.remesh(mesh)
+            
+            start = time.time()
+            #try:
+            #    self.velocities = np.empty((len(self.original_u), len(self.flow_solver.mesh.coordinates()), 2))
+            #    self.pressures = np.empty((len(self.original_u), len(self.flow_solver.mesh.coordinates()), 1))
 
-            try:
-                V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 2)
-                v_func = Function(V_new, degree=2)
-                v_func.set_allow_extrapolation(True)
-                P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 1)
-                p_func = Function(P_new, degree=1)
-                p_func.set_allow_extrapolation(True)
-                Parallel(n_jobs=len(self.original_u), require='sharedmem')(
-                         delayed(self._interpolate)(self, idx, u, p, v_func.copy(deepcopy=True), p_func.copy(deepcopy=True)) \
-                         for idx, (u, p) in enumerate(zip(self.original_u, self.original_p))
-                )
-            except RuntimeError:
-                print("INTERPOLATION BROKE")
-                self.flow_solver.mesh = old_mesh
-                self.coordinate_list.insert(selected_coord, selected_coord)
-            #raise
+            #    V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 2)
+            #    v_func = Function(V_new, degree=2)
+            #    v_func.set_allow_extrapolation(True)
+            #    P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 1)
+            #    p_func = Function(P_new, degree=1)
+            #    p_func.set_allow_extrapolation(True)
+            #    #for idx, (original_u, original_p) in enumerate(zip(self.original_u, self.original_p)):
+            #    #    self._interpolate(idx, original_u, original_p, v_func.copy(deepcopy=True), p_func.copy(deepcopy=True))
+            #    Parallel(n_jobs=len(self.original_u), require='sharedmem')(
+            #             delayed(self._interpolate)(idx, u, p, v_func.copy(deepcopy=True), p_func.copy(deepcopy=True)) \
+            #             #delayed(self._interpolate)(self, idx, u, p, v_func.copy(deepcopy=True), p_func.copy(deepcopy=True)) \
+            #             for idx, (u, p) in enumerate(zip(self.original_u, self.original_p))
+            #    )
+            #except RuntimeError:
+            #    print("INTERPOLATION BROKE")
+            #    self.flow_solver.mesh = old_mesh
+            #    self.coordinate_list.insert(selected_coord, selected_coord)
 
             # Interpolate Velocities and pressures... somehow all the same?
-            #for idx, (original_u, original_p) in enumerate(zip(self.original_u, self.original_p)):
-            #    try:
-            #        V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 2)
-            #        #V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 3)
-            #        v_func = Function(V_new, degree=2)
-            #        v_func.set_allow_extrapolation(True)
-            #        v_func.interpolate(original_u.copy(deepcopy=True))
+            for idx, (original_u, original_p) in enumerate(zip(self.original_u, self.original_p)):
+                try:
+                    V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 2)
+                    #V_new = VectorFunctionSpace(self.flow_solver.mesh, 'Lagrange', 3)
+                    v_func = Function(V_new, degree=2)
+                    v_func.set_allow_extrapolation(True)
+                    v_func.interpolate(original_u.copy(deepcopy=True))
 
-            #        P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 1)
-            #        #P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 3)
-            #        p_func = Function(P_new, degree=1)
-            #        p_func.set_allow_extrapolation(True)
-            #        p_func.interpolate(original_p.copy(deepcopy=True))
-            #    except RuntimeError:
-            #        print("INTERPOLATION BROKE")
-            #        self.flow_solver.mesh = old_mesh
-            #        self.coordinate_list.insert(selected_coord, selected_coord)
-            #        return 2 # Node removal broke mesh
+                    P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 1)
+                    #P_new = FunctionSpace(self.flow_solver.mesh, 'Lagrange', 3)
+                    p_func = Function(P_new, degree=1)
+                    p_func.set_allow_extrapolation(True)
+                    p_func.interpolate(original_p.copy(deepcopy=True))
+                except RuntimeError:
+                    print("INTERPOLATION BROKE")
+                    self.flow_solver.mesh = old_mesh
+                    self.coordinate_list.insert(selected_coord, selected_coord)
+                    return 2 # Node removal broke mesh
 
-            #    try:
-            #        u = v_func.copy(deepcopy=True)
-            #        u.set_allow_extrapolation(True)
-            #        self.u[idx] = u.copy(deepcopy=True)
+                try:
+                    u = v_func.copy(deepcopy=True)
+                    u.set_allow_extrapolation(True)
+                    self.u[idx] = u.copy(deepcopy=True)
 
-            #        p = p_func.copy(deepcopy=True)
-            #        p.set_allow_extrapolation(True)
-            #        self.p[idx] = p.copy(deepcopy=True)
-            #    except RuntimeError:
-            #        print("CALCULATION BROKE")
-            #        self.flow_solver.mesh = old_mesh
-            #        self.coordinate_list.insert(selected_coord, selected_coord)
-            #        return 2 # Node removal broke mesh
+                    p = p_func.copy(deepcopy=True)
+                    p.set_allow_extrapolation(True)
+                    self.p[idx] = p.copy(deepcopy=True)
+                except RuntimeError:
+                    print("CALCULATION BROKE")
+                    self.flow_solver.mesh = old_mesh
+                    self.coordinate_list.insert(selected_coord, selected_coord)
+                    return 2 # Node removal broke mesh
 
-            #    del v_func
-            #    del p_func
+                del v_func
+                del p_func
 
             self._calculate_velocities()
             self._calculate_pressures()
+            #print("INTERPOLATION TIME: {}".format(time.time() - start))
 
             # Update this to reflect removed vertex
             self.removable = np.argwhere(self.flow_solver.removable)[:,0]

@@ -157,6 +157,8 @@ class ParameterServer(object):
         self.PREFIX = PREFIX
         self.policy_net_1 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1).float()
         self.policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1).float()
+        #self.policy_net_1 = NodeRemovalNet(n_actions+1, conv_width=256, topk=0.1).float()
+        #self.policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=256, topk=0.1).float()
         self.policy_net_1.set_num_nodes(NUM_INPUTS)
         self.policy_net_2.set_num_nodes(NUM_INPUTS)
 
@@ -174,6 +176,10 @@ class ParameterServer(object):
         self.optimizer = self.optimizer_fn(self.policy_net_1.parameters())
         self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer,
                                        milestones=[500000, 1000000, 1500000], gamma=0.1)
+        if(RESTART):
+            for i in range(449129):
+                self.scheduler.step()
+
         self.num_grads = 0
         self.select = True
 
@@ -219,6 +225,8 @@ class DataWorker(object):
     def __init__(self):
         self.policy_net_1 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1).float()
         self.policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=128, topk=0.1).float()
+        #self.policy_net_1 = NodeRemovalNet(n_actions+1, conv_width=256, topk=0.1).float()
+        #self.policy_net_2 = NodeRemovalNet(n_actions+1, conv_width=256, topk=0.1).float()
         self.policy_net_1.set_num_nodes(NUM_INPUTS)
         self.policy_net_2.set_num_nodes(NUM_INPUTS)
         if(RESTART):
@@ -337,22 +345,15 @@ def optimize_model():
 RESTART = False
 
 # Prefix used for saving results
-#PREFIX = 'ys930_ray_parallel_training_'
-#PREFIX = 'ys930_ray_small_lr_parallel_batch_training_'
-#PREFIX = 'ys930_ray_recreate_'
-#PREFIX = 'ys930_ray_8parallel_'
-#PREFIX = 'ys930_ray_more_exploit_'
-#PREFIX = 'ys930_ray_faster_learning_'
-#PREFIX = 'ys930_ray_small_lr_tuning_'
-#PREFIX = 'ys930_ray_small_lr_tuning_'
+#PREFIX = 's1020_ray_scheduler_'
+#PREFIX = 'lwk80120k25_ray_scheduler_'
+#PREFIX = 'nlf415_ray_scheduler_'
 
-#PREFIX = 'ys930_ray_tuned_'  # NEED TO IMPLEMENT RESTARTING FOR THIS
-
-#PREFIX = 'ys930_ray_original_hyperparameters_'
-#PREFIX = 'ys930_ray_try_again_'
-#PREFIX = 'ys930_ray_try_again_'
-#PREFIX = 'ys930_ray_last_try_'
-PREFIX = 'ys930_ray_scheduler_'
+#PREFIX = 'ys930_ray_scheduler_'
+#PREFIX = 'ah93w145_ray_scheduler_'
+#PREFIX = 'rg1495_ray_scheduler_'
+#PREFIX = 'rg1495_regular_ray_scheduler_'
+PREFIX = 'cylinder_ray_scheduler_'
 
 # Save directory
 save_dir = 'training_results'
@@ -418,6 +419,8 @@ except:
 
 # Set up replay memory and data handler
 memory = ReplayMemory.remote(10000)
+#memory = ReplayMemory.remote(20000)
+#memory = ReplayMemory.remote(50000)
 save_str = "/home/fenics/drl_projects/MeshDQN/parallel_training/{}/{}".format(save_dir, PREFIX)
 handler = DataHandler.remote(save_str)
 

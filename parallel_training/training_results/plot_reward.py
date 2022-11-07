@@ -29,13 +29,17 @@ PREFIX = 'ys930_ray_recreate'
 PREFIX = 'ys930_ray_8parallel'
 
 RESTART = False
+TRANSFER = False
 
 #TODO Intrpolate original mesh to current mesh each time instead of incremental interpolation?
 def plot(PREFIX):
     if(RESTART):
-        ep_reward = np.load("./{}/{}_RESTART_RESTART_RESTART_reward.npy".format(PREFIX, PREFIX))
+        ep_reward = np.load("./{}/{}_RESTART_reward.npy".format(PREFIX, PREFIX))
     else:
-        ep_reward = np.load("./{}/{}_reward.npy".format(PREFIX, PREFIX))
+        if(TRANSFER):
+            ep_reward = np.load("./ys930_to_ah93w145_ray_scheduler/reward.npy")
+        else:
+            ep_reward = np.load("./{}/{}_reward.npy".format(PREFIX, PREFIX))
 
     for i in range(1, 11)[::-1]:
         print(ep_reward[-i])
@@ -85,27 +89,33 @@ def plot(PREFIX):
     ax.set_title("Double DQN Moving Average Reward", fontsize=14)
     ax.legend(loc='best')
     print("SAVE TO: ./{}/{}_reward.png".format(PREFIX, PREFIX))
-    plt.savefig("./{}/{}_reward.png".format(PREFIX, PREFIX))
+
+    if(TRANSFER):
+        plt.savefig("./ys930_to_ah93w145_ray_scheduler/reward.png".format(PREFIX, PREFIX))
+    else:
+        plt.savefig("./{}/{}_reward.png".format(PREFIX, PREFIX))
     
     #fig, ax = plt.subplots()
     #ax.plot(np.linspace(0, 200000, 500), f(np.linspace(0, 200000, 500)))
     #plt.show()
 
 ps = [
-    #'ys930_ray_recreate',
-    #'ys930_ray_8parallel',
-    #'ys930_ray_more_exploit',
-    #'ys930_ray_faster_learning'
-    #'ys930_ray_small_lr_tuning'
-    #'ys930_ray_tuned'
-    #'ys930_ray_tuned'
-    #'ys930_ray_tuned',
-    #'ys930_ray_original_hyperparameters'
-    #'ys930_ray_try_again',
-    #'ys930_ray_last_try'
-    'ys930_ray_scheduler'
+    #'lwk80120k25_ray_scheduler',
+    #'nlf415_ray_scheduler',
+    #'s1020_ray_scheduler',
+
+    #'ys930_ray_scheduler',
+    #'ys930_mega_parallel',
+    #'ah93w145_ray_scheduler',
+    #'rg1495_ray_scheduler',
+    #'rg1495_regular_ray_scheduler',
+    #'rg1495_mega_parallel',
+    #'rg1495_again_mega_parallel',
+    #'ys930_mega_parallel',
+
+    'cylinder_mega_parallel',
 ]
 for p in ps:
     plot(p)
-
+#plt.show()
 

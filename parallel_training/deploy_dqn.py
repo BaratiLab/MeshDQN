@@ -21,13 +21,13 @@ SURROGATE_MODEL = False
 MULTI_SNAPSHOT = True
 
 # TODO: These are misnomers
-from airfoilgcnn import AirfoilGCNN, NodeRemovalNet
-if(not SURROGATE_MODEL):
-    from MultiSnapshotEnv2DAirfoil import MultiSnapshotEnv2DAirfoil as Env2DAirfoil
-elif(MULTI_SNAPSHOT):
-    from OnlineInterpolationEnv2DAirfoil import OnlineInterpolationEnv2DAirfoil as Env2DAirfoil
-else:
-    from Env2DAirfoil import Env2DAirfoil
+from parallel_airfoilgcnn import AirfoilGCNN, NodeRemovalNet
+#if(not SURROGATE_MODEL):
+from ParallelMultiSnapshotEnv2DAirfoil import ParallelMultiSnapshotEnv2DAirfoil as Env2DAirfoil
+#elif(MULTI_SNAPSHOT):
+#    from OnlineInterpolationEnv2DAirfoil import OnlineInterpolationEnv2DAirfoil as Env2DAirfoil
+#else:
+#    from Env2DAirfoil import Env2DAirfoil
 
 from itertools import count
 
@@ -54,14 +54,18 @@ if(torch.cuda.is_available()):
 else:
     print("USING CPU")
     device = torch.device('cpu')
+device = torch.device('cpu')
 
 
 #TODONE: Use last mesh BEFORE reaching accuracy threshold. Significantly better results.
 #TODO: Compare interpolated value to actual value on a vertex-by-vertex basis
 
-complete_traj = True
+complete_traj = False
 plot_traj = True
-best = False
+end_plots = True
+
+# Try this next
+use_best = False
 
 #obj = 'cylinder_multi'
 #obj = 'ys930_5000K'
@@ -71,60 +75,44 @@ best = False
 #obj = 'ys930_691K'
 #obj = 'ys930_50K'
 #obj = 'lwk80120k25_13'
+#obj = 'lwk80120k25_ray_scheduler'
 
-#obj = 'ys930_1386'
-#obj = 'ys930_1386_small'
-#obj = 'ys930_1386_small'
-#obj = 'ys930_1386_goal_vertices'
-##obj = 'ys930_1386_goal_vertices_snapshots'
 
-if(not SURROGATE_MODEL):
-    obj = 'ys930_1386_long_interp'
-else:
-    obj = 'ys930_1386_long_online_interp'
+#obj = 's1020_ray_scheduler'
+#obj = 'nlf415_ray_scheduler'
 
-RESTART = True
-if(RESTART):
-    PREFIX = '{0}/{0}_'.format(obj)
-else:
-    PREFIX = '{0}/restart_{0}_'.format(obj)
+#obj = 'ys930_ray_scheduler'
+#obj = 'ah93w145_ray_scheduler'
+
+#obj = 'rg1495_ray_scheduler'
+#obj = 'rg1495_mega_parallel'
+#obj = 'rg1495_regular_ray_scheduler'
+
+obj = 'cylinder_mega_parallel'
+
+RESTART = False
+CONFIRM = False
+#if(RESTART):
+PREFIX = '{0}/{0}_'.format(obj)
+#else:
+#    PREFIX = '{0}/restart_{0}_'.format(obj)
 
 # Set up environment
-with open("./configs/{}.yaml".format(obj.split("_")[0]), 'r') as stream:
+with open("./training_results/{}/config.yaml".format(obj), 'r') as stream:
     flow_config = yaml.safe_load(stream)
+
 
 print(flow_config)
 if(SURROGATE_MODEL):
     flow_config['agent_params']['save_steps'] = flow_config['agent_params']['solver_steps']
+
 env = Env2DAirfoil(flow_config)
+env.plot_state(title="{} Closest Vertices to Airfoil")
 env.flow_solver.deploy()
 
 # Hold on to ground truth values
 flow_config['agent_params']['gt_drag'] = env.gt_drag
 flow_config['agent_params']['gt_time'] = env.gt_time
-#flow_config['agent_params']['u'] = env.u.copy(deepcopy=True)
-#flow_config['agent_params']['p'] = env.p.copy(deepcopy=True)
-flow_config['agent_params']['u'] = [u.copy(deepcopy=True) for u in env.original_u]
-flow_config['agent_params']['p'] = [p.copy(deepcopy=True) for p in env.original_p]
-#obj = 'lwk80120k25_13'
-
-RESTART = True
-if(RESTART):
-    PREFIX = '{0}/{0}_'.format(obj)
-else:
-    PREFIX = '{0}/restart_{0}_'.format(obj)
-
-# Set up environment
-with open("./configs/{}.yaml".format(obj.split("_")[0]), 'r') as stream:
-    flow_config = yaml.safe_load(stream)
-env = Env2DAirfoil(flow_config)
-env.flow_solver.deploy()
-
-# Hold on to ground truth values
-flow_config['agent_params']['gt_drag'] = env.gt_drag
-flow_config['agent_params']['gt_time'] = env.gt_time
-#flow_config['agent_params']['u'] = env.u.copy(deepcopy=True)
-#flow_config['agent_params']['p'] = env.p.copy(deepcopy=True)
 flow_config['agent_params']['u'] = [u.copy(deepcopy=True) for u in env.original_u]
 flow_config['agent_params']['p'] = [p.copy(deepcopy=True) for p in env.original_p]
 n_actions = env.action_space.n
@@ -141,21 +129,91 @@ results_dir = 'training_results'
 if(not os.path.exists("./{}/{}/deployed/".format(results_dir, obj))):
     os.makedirs("./{}/{}/deployed/".format(results_dir, obj))
 
+# Confirm results
+if(CONFIRM):
+    print("JUST CONFIRMING RESULTS")
+    if(not os.path.exists("./{}/{}/deployed/confirmed/".format(results_dir, obj))):
+        os.makedirs("./{}/{}/deployed/confirmed/".format(results_dir, obj))
+
+net_restarts, d_restarts = "", ""
+if(RESTART):
+    RESTART_NUM = 0
+    for f in os.listdir("./{}/{}/".format(results_dir, obj)):
+        RESTART_NUM += int("{}_policy_net_1.pt".format(obj) in f)
+    RESTART_NUM -= 1
+    print("\n\nRESTART NUM: {}\n\n".format(RESTART_NUM))
+    net_restarts, d_restarts = "", ""
+    for i in range(RESTART_NUM):
+        net_restarts += "restart_"
+        d_restarts += "RESTART_"
+
 # Save models, losses, rewards at tiem of deployment
-shutil.copy("./{}/{}losses.npy".format(results_dir, PREFIX),
-            "./{}/{}/{}/{}losses.npy".format(results_dir, obj, 'deployed', obj+"_"))
+if(RESTART):
+    split_PREFIX = PREFIX.split("/")
+    print("PREFIX: {}".format(PREFIX))
+    print("SPLIT PREFIX: {}".format(split_PREFIX))
+    if(CONFIRM):
+        shutil.copy("./{}/{}/{}/{}{}losses.npy".format(results_dir, split_PREFIX[0], 'deployed', split_PREFIX[1], d_restarts),
+                    "./{}/{}/{}/confirmed/{}{}losses.npy".format(results_dir, obj, 'deployed', obj+"_", d_restarts))
+        
+        shutil.copy("./{}/{}/{}/{}{}actions.npy".format(results_dir, split_PREFIX[0], 'deployed', split_PREFIX[1], d_restarts),
+                "./{}/{}/{}/confirmed/{}{}actions.npy".format(results_dir, obj, 'deployed', obj+"_", d_restarts))
 
-shutil.copy("./{}/{}actions.npy".format(results_dir, PREFIX),
-            "./{}/{}/{}/{}actions.npy".format(results_dir, obj, 'deployed', obj+"_"))
+        shutil.copy("./{}/{}/{}/{}{}rewards.npy".format(results_dir, split_PREFIX[0], 'deployed', split_PREFIX[1], d_restarts),
+                    "./{}/{}/{}/confirmed/{}{}rewards.npy".format(results_dir, obj, 'deployed', obj+"_", d_restarts))
+        
+        shutil.copy("./{}/{}/{}/{}{}policy_net_1.pt".format(results_dir, split_PREFIX[0], 'deployed', net_restarts, split_PREFIX[1]),
+                    "./{}/{}/{}/confirmed/{}{}policy_net_1.pt".format(results_dir, obj, 'deployed', net_restarts, obj+"_"))
+        
+        shutil.copy("./{}/{}/{}/{}{}policy_net_2.pt".format(results_dir, split_PREFIX[0], 'deployed', net_restarts, split_PREFIX[1]),
+                    "./{}/{}/{}/confirmed/{}{}policy_net_2.pt".format(results_dir, obj, 'deployed', net_restarts, obj+"_"))
+    else:
+        shutil.copy("./{}/{}{}losses.npy".format(results_dir, PREFIX, d_restarts),
+                    "./{}/{}/{}/{}{}losses.npy".format(results_dir, obj, 'deployed', obj+"_", d_restarts))
+        
+        shutil.copy("./{}/{}{}actions.npy".format(results_dir, PREFIX, d_restarts),
+                    "./{}/{}/{}/{}{}actions.npy".format(results_dir, obj, 'deployed', obj+"_", d_restarts))
+        
+        shutil.copy("./{}/{}{}rewards.npy".format(results_dir, PREFIX, d_restarts),
+                    "./{}/{}/{}/{}{}rewards.npy".format(results_dir, obj, 'deployed', obj+"_", d_restarts))
+        
+        shutil.copy("./{}/{}/{}{}policy_net_1.pt".format(results_dir, split_PREFIX[0], net_restarts, split_PREFIX[1]),
+                    "./{}/{}/{}/{}{}policy_net_1.pt".format(results_dir, obj, 'deployed', net_restarts, obj+"_"))
+        
+        shutil.copy("./{}/{}/{}{}policy_net_2.pt".format(results_dir, split_PREFIX[0], net_restarts, split_PREFIX[1]),
+                    "./{}/{}/{}/{}{}policy_net_2.pt".format(results_dir, obj, 'deployed', net_restarts, obj+"_"))
+else:
+    if(CONFIRM):
+        shutil.copy("./{}/{}/{}/{}losses.npy".format(results_dir, obj, 'deployed', obj+"_"),
+                    "./{}/{}/{}/confirmed/{}losses.npy".format(results_dir, obj, 'deployed', obj+"_"))
+        
+        shutil.copy("./{}/{}/{}/{}actions.npy".format(results_dir, obj, 'deployed', obj+"_"),
+                    "./{}/{}/{}/confirmed/{}actions.npy".format(results_dir, obj, 'deployed', obj+"_"))
+        
+        shutil.copy("./{}/{}/{}/{}rewards.npy".format(results_dir, obj, 'deployed', obj+"_"),
+                    "./{}/{}/{}/confirmed/{}rewards.npy".format(results_dir, obj, 'deployed', obj+"_"))
+        
+        shutil.copy("./{}/{}/{}/{}policy_net_1.pt".format(results_dir, obj, 'deployed', obj+"_"),
+                    "./{}/{}/{}/confirmed/{}policy_net_1.pt".format(results_dir, obj, 'deployed', obj+"_"))
+        
+        shutil.copy("./{}/{}/{}/{}policy_net_2.pt".format(results_dir, obj, 'deployed', obj+"_"),
+                    "./{}/{}/{}/confirmed/{}policy_net_2.pt".format(results_dir, obj, 'deployed', obj+"_"))
+    else:
+        shutil.copy("./{}/{}losses.npy".format(results_dir, PREFIX),
+                    "./{}/{}/{}/{}losses.npy".format(results_dir, obj, 'deployed', obj+"_"))
+        
+        shutil.copy("./{}/{}actions.npy".format(results_dir, PREFIX),
+                    "./{}/{}/{}/{}actions.npy".format(results_dir, obj, 'deployed', obj+"_"))
+        
+        shutil.copy("./{}/{}rewards.npy".format(results_dir, PREFIX),
+                    "./{}/{}/{}/{}rewards.npy".format(results_dir, obj, 'deployed', obj+"_"))
+        
+        shutil.copy("./{}/{}policy_net_1.pt".format(results_dir, PREFIX),
+                    "./{}/{}/{}/{}policy_net_1.pt".format(results_dir, obj, 'deployed', obj+"_"))
+        
+        shutil.copy("./{}/{}policy_net_2.pt".format(results_dir, PREFIX),
+                    "./{}/{}/{}/{}policy_net_2.pt".format(results_dir, obj, 'deployed', obj+"_"))
 
-shutil.copy("./{}/{}rewards.npy".format(results_dir, PREFIX),
-            "./{}/{}/{}/{}rewards.npy".format(results_dir, obj, 'deployed', obj+"_"))
-
-shutil.copy("./{}/{}policy_net_1.pt".format(results_dir, PREFIX),
-            "./{}/{}/{}/{}policy_net_1.pt".format(results_dir, obj, 'deployed', obj+"_"))
-
-shutil.copy("./{}/{}policy_net_2.pt".format(results_dir, PREFIX),
-            "./{}/{}/{}/{}policy_net_2.pt".format(results_dir, obj, 'deployed', obj+"_"))
 
 if(SURROGATE_MODEL):
     shutil.copy("./{}/{}surrogate_model.joblib".format(results_dir, PREFIX),
@@ -177,14 +235,37 @@ policy_net_1.set_num_nodes(NUM_INPUTS)
 #policy_net_2.set_num_nodes(NUM_INPUTS)
 #policy_net_1.set_num_nodes(env.initial_num_node)
 #policy_net_1.set_num_nodes(5)
-policy_net_1.load_state_dict(torch.load("./{}/{}/{}/{}policy_net_1.pt".format(
-                             results_dir, obj, 'deployed', obj+'_'), map_location=torch.device(device)))
+if(RESTART):
+    if(CONFIRM):
+        policy_net_1.load_state_dict(torch.load("./{}/{}/{}/confirmed/{}{}policy_net_1.pt".format(
+                                results_dir, obj, 'deployed', net_restarts, obj+'_'), map_location=torch.device(device)))
+    else:
+        policy_net_1.load_state_dict(torch.load("./{}/{}/{}/{}{}policy_net_1.pt".format(
+                             results_dir, obj, 'deployed', net_restarts, obj+'_'), map_location=torch.device(device)))
+else:
+    if(CONFIRM):
+        policy_net_1.load_state_dict(torch.load("./{}/{}/{}/confirmed/{}policy_net_1.pt".format(
+                                results_dir, obj, 'deployed', obj+'_'), map_location=torch.device(device)))
+    else:
+        policy_net_1.load_state_dict(torch.load("./{}/{}/{}/{}policy_net_1.pt".format(
+                                results_dir, obj, 'deployed', obj+'_'), map_location=torch.device(device)))
+
+#raise
 #env.model = joblib.load("./{}/{}/{}/{}surrogate_model.joblib".format(
 #                        results_dir, obj, 'deployed', obj+"_"))
 
-if(best):
-    actions = np.load("./{}/{}actions.npy".format(results_dir, PREFIX), allow_pickle=True)
-    rewards = np.load("./{}/{}rewards.npy".format(results_dir, PREFIX), allow_pickle=True)
+if(use_best):
+    print("\nFOLLOWING BEST TRAJECTORY\n")
+    attempt = 0
+    while(True):
+        try:
+            actions = np.load("./{}/{}actions.npy".format(results_dir, PREFIX), allow_pickle=True)
+            rewards = np.load("./{}/{}rewards.npy".format(results_dir, PREFIX), allow_pickle=True)
+            break
+        except OSError:
+            attempt += 1
+            print("FAILED ATTEMPT: {}".format(attempt))
+            pass
     ep_rews = np.empty(len(rewards))
     for idx, r in enumerate(rewards):
         ep_rews[idx] = np.sum(r)
@@ -231,6 +312,7 @@ def vertex_plot(mesh, name="mesh", title=None, vertex_coord=None):
     if(title):
         ax.set_title(title + ": {} Vertices".format(len(mesh.coordinates())), fontsize=14)
 
+    print("NAME: {}".format(name))
     plt.savefig("./{}_zoriginal.png".format(name), bbox_inches="tight")
     if(vertex_coord is not None):
         ax.scatter(vertex_coord[0], vertex_coord[1], color='r', s=10)
@@ -261,7 +343,8 @@ complete_lifts = [env.gt_lift]
 num_steps = flow_config['agent_params']['timesteps']
 for t in range(num_steps):
     action = select_action(state)
-    if(best):
+    if(use_best):
+        print("\nFOLLOWING BEST TRAJECTORY\n")
         try:
             action = torch.tensor(actions[best][t])
             #action = torch.tensor(actions[worst][t])
@@ -278,17 +361,31 @@ for t in range(num_steps):
         plt_str = str(len(env.flow_solver.mesh.coordinates()))
         while(len(plt_str) < 8):
             plt_str = '0' + plt_str
-        if(plot_traj):
+        if(end_plots and (t==0)):
             vertex_plot(env.flow_solver.mesh,
+            #"./{}/{}/{}/confirmed/{}_{}_mesh_selected".format(results_dir, obj, 'deployed', plt_str, obj),
             "./{}/{}/{}/{}_{}_mesh_selected".format(results_dir, obj, 'deployed', plt_str, obj),
-            "{} Mesh".format(obj), vertex_coords[-1])
+            "{} Mesh".format(obj.split("_")[0].upper()), vertex_coords[-1])
+        if(plot_traj):
+            if(CONFIRM):
+                vertex_plot(env.flow_solver.mesh,
+                "./{}/{}/{}/confirmed/{}_{}_mesh_selected".format(results_dir, obj, 'deployed', plt_str, obj),
+                "{} Mesh".format(obj.split("_")[0].upper()), vertex_coords[-1])
+            else:
+                vertex_plot(env.flow_solver.mesh,
+                "./{}/{}/{}/{}_{}_mesh_selected".format(results_dir, obj, 'deployed', plt_str, obj),
+                "{} Mesh".format(obj), vertex_coords[-1])
 
     except KeyError:
         print("\nNO REMOVAL\n")
         selected_action = np.nan
         pass
 
-    next_state, reward, done, _ = env.step(action.item())
+    try:
+        next_state, reward, done, _ = env.step(action.item())
+    except RuntimeError:
+        break
+
     if(not SURROGATE_MODEL):
         est_drag.append(env.new_drags)
         est_lift.append(env.new_lifts)
@@ -299,11 +396,6 @@ for t in range(num_steps):
     print("NUMBER OF VERTICES: {}, DONE: {}".format(
                     len(env.flow_solver.mesh.coordinates()), done))
 
-    # Check if accuracy threshold has been reached
-    if(done):
-        break
-    else:
-        best_mesh = Mesh(env.flow_solver.mesh)
 
     # Run simulation if we removed a vertex
     if(complete_traj and (selected_action is not np.nan)):
@@ -319,12 +411,6 @@ for t in range(num_steps):
         if(not SURROGATE_MODEL):
             complete_lifts.append(full_lifts)
 
-    #print()
-    #print("EST DRAG: {}".format(est_drag))
-    #print("EST LIFT: {}".format(est_lift))
-    #print("COMPLETE DRAGS: {}".format(complete_drags))
-    #print("COMPLETE LIFTS: {}".format(complete_lifts))
-    #print()
     tactions.append(selected_action)
 
     # Save things as we get them
@@ -335,7 +421,10 @@ for t in range(num_steps):
         est_data = np.hstack((np.array(est_traj_vertices)[:,np.newaxis], np.array(est_drag), np.array(est_lift)))
     else:
         est_data = np.vstack((est_traj_vertices, est_drag)).T
-    np.save("./{}/{}/{}/{}_interpolate_drag_trajectory.npy".format(results_dir, obj, 'deployed', obj), est_data)
+    if(CONFIRM):
+        np.save("./{}/{}/{}/confirmed/{}{}_interpolate_drag_trajectory.npy".format(results_dir, obj, 'deployed', net_restarts, obj), est_data)
+    else:
+        np.save("./{}/{}/{}/{}{}_interpolate_drag_trajectory.npy".format(results_dir, obj, 'deployed', net_restarts, obj), est_data)
 
 
     if(complete_traj):
@@ -347,15 +436,37 @@ for t in range(num_steps):
             td = np.array(traj_drags)
             tl = np.array(traj_lifts)
             data = np.hstack((tv[:,np.newaxis], td, tl))
-        np.save("./{}/{}/{}/{}_drag_trajectory.npy".format(results_dir, obj, 'deployed', obj), data)
+        if(CONFIRM):
+            np.save("./{}/{}/{}/confirmed/{}{}_drag_trajectory.npy".format(results_dir, obj, 'deployed', net_restarts, obj), data)
+        else:
+            np.save("./{}/{}/{}/{}{}_drag_trajectory.npy".format(results_dir, obj, 'deployed', net_restarts, obj), data)
 
+    # Check if accuracy threshold has been reached
+    best_mesh = Mesh(env.flow_solver.mesh)
+    if(done):
+        break
+    else:
+        best_mesh = Mesh(env.flow_solver.mesh)
+
+if(end_plots):
+    plt_str = str(len(env.flow_solver.mesh.coordinates()))
+    while(len(plt_str) < 8):
+        plt_str = '0' + plt_str
+    if(len(vertex_coords) > 0):
+        vertex_plot(env.flow_solver.mesh,
+        "./{}/{}/{}/{}_{}_mesh_selected".format(results_dir, obj, 'deployed', plt_str, obj),
+        "{} Mesh".format(obj.split("_")[0].upper()), vertex_coords[-1])
 print(est_traj_vertices, est_drag)
 if(not SURROGATE_MODEL):
     #est_data = np.vstack((est_traj_vertices, est_drag, est_lift)).T
     est_data = np.hstack((np.array(est_traj_vertices)[:,np.newaxis], np.array(est_drag), np.array(est_lift)))
 else:
     est_data = np.vstack((est_traj_vertices, est_drag)).T
-np.save("./{}/{}/{}/{}_interpolate_drag_trajectory.npy".format(results_dir, obj, 'deployed', obj), est_data)
+
+if(CONFIRM):
+    np.save("./{}/{}/{}/confirmed/{}_interpolate_drag_trajectory.npy".format(results_dir, obj, 'deployed', obj), est_data)
+else:
+    np.save("./{}/{}/{}/{}_interpolate_drag_trajectory.npy".format(results_dir, obj, 'deployed', obj), est_data)
 
 print("PUTTING MESH BACK")
 env.flow_solver.mesh = Mesh(best_mesh) # Set it back to last acceptable mesh
@@ -367,9 +478,14 @@ if(complete_traj):
     data = np.hstack((tv[:,np.newaxis], td, tl))
     for d in data:
         print(d)
-    np.save("./{}/{}/{}/{}_drag_trajectory.npy".format(results_dir, obj, 'deployed', obj), data)
-    np.save("./{}/{}/{}/{}_complete_drags.npy".format(results_dir, obj, 'deployed', obj), complete_drags)
-    np.save("./{}/{}/{}/{}_complete_lifts.npy".format(results_dir, obj, 'deployed', obj), complete_lifts)
+    if(CONFIRM):
+        np.save("./{}/{}/{}/confirmed/{}_drag_trajectory.npy".format(results_dir, obj, 'deployed', obj), data)
+        np.save("./{}/{}/{}/confirmed/{}_complete_drags.npy".format(results_dir, obj, 'deployed', obj), complete_drags)
+        np.save("./{}/{}/{}/confirmed/{}_complete_lifts.npy".format(results_dir, obj, 'deployed', obj), complete_lifts)
+    else:
+        np.save("./{}/{}/{}/{}_drag_trajectory.npy".format(results_dir, obj, 'deployed', obj), data)
+        np.save("./{}/{}/{}/{}_complete_drags.npy".format(results_dir, obj, 'deployed', obj), complete_drags)
+        np.save("./{}/{}/{}/{}_complete_lifts.npy".format(results_dir, obj, 'deployed', obj), complete_lifts)
 
 def plot_mesh(mesh, name="mesh", title=None, actions=None, vertex_coords=None):
     coords = mesh.coordinates()
@@ -423,4 +539,5 @@ print(gt_drag)
 print(gt_time)
 print("GROUND TRUTH DRAG:\t{0:.6f}\tGROUND TRUTH TIME:\t{1:.6f}".format(gt_drag[-1], gt_time[-1]))
 print("NEW DRAG:\t\t{0:.6f}\tNEW TIME:\t\t{1:.6f}".format(new_drag, new_time))
+print("DRAG ERROR:\t{0:.5f}%".format(100*np.abs(new_drag - gt_drag[-1])/np.abs(gt_drag[-1])))
 

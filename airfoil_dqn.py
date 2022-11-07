@@ -82,7 +82,6 @@ LEARNING_RATE = 0.0005
 #NEW_PREFIX = 'restart_ys930_1386_small_'
 
 #PREFIX = 'ys930_1386_goal_vertices_snapshots_interp_'
-PREFIX = 'ys930_1386_parallel_interp_'
 
 #PREFIX = 'ys930_1386_online_interp_'
 #PREFIX = 'ys930_1386_long_online_interp_'
@@ -91,6 +90,9 @@ PREFIX = 'ys930_1386_parallel_interp_'
 #NEW_PREFIX = 'restart_lwk80120k25_13_'
 
 #PREFIX = 'lwk80120k25_13_small_'
+
+#PREFIX = 'ys930_1386_long_interp_'
+PREFIX = 'ys930_1386_parallel_interp_'
 
 #PREFIX = 'ag11_'
 #PREFIX = 'cylinder_'
@@ -347,11 +349,11 @@ for episode in range(start_ep, num_episodes):
     if(episode != 0):
         # Could maybe move ground truth calculation values to outside of reset?
         env = Env2DAirfoil(flow_config)
-        env.model = joblib.load("./training_results/pretrained_model.joblib")
-        env.mean_x = np.load("./training_results/mean_x.npy")
-        env.std_x = np.load("./training_results/std_x.npy")
-        env.mean_y = np.load("./training_results/mean_y.npy")
-        env.std_y = np.load("./training_results/std_y.npy")
+        #env.model = joblib.load("./training_results/pretrained_model.joblib")
+        #env.mean_x = np.load("./training_results/mean_x.npy")
+        #env.std_x = np.load("./training_results/std_x.npy")
+        #env.mean_y = np.load("./training_results/mean_y.npy")
+        #env.std_y = np.load("./training_results/std_y.npy")
 
     state = env.get_state()
     for t in tqdm(count()):
@@ -371,9 +373,13 @@ for episode in range(start_ep, num_episodes):
             next_state = None
 
         if(next_state is not None):
-            memory.push(state.cuda(), action.cuda(), next_state.cuda(), reward.cuda())
+            memory.push(state.to(device), action.to(device), next_state.to(device), reward.to(device))
+            #memory.push(state.cuda(), action.cuda(), next_state.cuda(), reward.cuda())
+            #memory.push(state, action, next_state, reward)
         else:
-            memory.push(state.cuda(), action.cuda(), next_state, reward.cuda())
+            memory.push(state.to(device), action.to(device), next_state, reward.to(device))
+            #memory.push(state.cuda(), action.cuda(), next_state, reward.cuda())
+            #memory.push(state, action, next_state, reward)
 
         state = next_state
 
@@ -395,18 +401,18 @@ for episode in range(start_ep, num_episodes):
             optimizer = optimizer_fn(policy_net_2.parameters())
             first = True
     
-    fig, ax = plt.subplots()
-    ax.plot(ep_reward)
-    if(len(ep_reward) >= 25):
-        ax.plot(list(range(len(ep_reward)))[24:], _movingaverage(ep_reward, 25))
+        fig, ax = plt.subplots()
+        ax.plot(ep_reward)
+        if(len(ep_reward) >= 25):
+            ax.plot(list(range(len(ep_reward)))[24:], _movingaverage(ep_reward, 25))
 
-    if(len(ep_reward) >= 200):
-        ax.plot(list(range(len(ep_reward)))[199:], _movingaverage(ep_reward, 200))
+        if(len(ep_reward) >= 200):
+            ax.plot(list(range(len(ep_reward)))[199:], _movingaverage(ep_reward, 200))
 
-    ax.set(xlabel="Episode", ylabel="Reward")
-    ax.set_title("DQN Training Reward")
-    plt.savefig("./{}/{}reward.png".format(save_dir, PREFIX))
-    plt.close()
+        ax.set(xlabel="Episode", ylabel="Reward")
+        ax.set_title("DQN Training Reward")
+        plt.savefig("./{}/{}reward.png".format(save_dir, PREFIX))
+        plt.close()
 
     np.save("./{}/{}reward.npy".format(save_dir, PREFIX), ep_reward)
 

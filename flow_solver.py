@@ -63,10 +63,7 @@ class FlowSolver(object):
 
         # Smooth mesh
         self.smooth = solver_params['smooth']
-        print("SMOOTH?: {}".format(self.smooth))
         if(self.smooth):
-            #for i in range(10):
-            #self.mesh.smooth(1)
             self.mesh.smooth(50)
 
         # Remember inflow profile function in case it is time dependent
