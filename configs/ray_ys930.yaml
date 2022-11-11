@@ -4,7 +4,7 @@ flow_config:
                 rho: 1.
                 inflow: "constant"
         geometry_params:
-                mesh: "/home/fenics/drl_projects/MeshDQN/parallel_training/ys930_0.15000_triangle.xdmf"
+                mesh: "/home/fenics/drl_projects/MeshDQN/xdmf_files/ys930_0.15000_triangle.xdmf"
         solver_params:
                 dt: 0.001
                 solver_type: 'lu'
@@ -14,7 +14,6 @@ agent_params:
         episodes: 1000000
         timesteps: 10000
         threshold: 0.001 # Final drag about 0.1% different
-        #N_closest: 200
         N_closest: 180
         gt_drag: -1
         gt_time: -1
@@ -29,17 +28,11 @@ agent_params:
         target_update: 50
         num_workers: 1
         num_parallel: 12
-        #num_parallel: 1
 optimizer:
-        #lr: 5e-4
-        #lr: 1e-4
         lr: 1e-5
-        #weight_decay: 0
         weight_decay: 1e-6
         batch_size: 32
-        #batch_size: 64
 epsilon:
-        #decay: 100000
         decay: 10000
         start: 1.
         end: 0.01
