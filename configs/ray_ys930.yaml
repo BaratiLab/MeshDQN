@@ -4,19 +4,18 @@ flow_config:
                 rho: 1.
                 inflow: "constant"
         geometry_params:
-                #mesh: "mesh_files/cylinder_mesh_files/cylinder0.1000_0.05000_triangle.xdmf"
-                mesh: "mesh_files/cylinder_mesh_files/cylinder0.1000_0.05000_triangle.xdmf"
+                mesh: "/home/fenics/drl_projects/MeshDQN/parallel_training/ys930_0.15000_triangle.xdmf"
         solver_params:
                 dt: 0.001
                 solver_type: 'lu'
                 smooth: True
 agent_params:
         solver_steps: 5000
-        #solver_steps: 500
         episodes: 1000000
         timesteps: 10000
         threshold: 0.001 # Final drag about 0.1% different
-        N_closest: 200
+        #N_closest: 200
+        N_closest: 180
         gt_drag: -1
         gt_time: -1
         u: -1
@@ -24,16 +23,25 @@ agent_params:
         do_nothing: True
         time_reward: 0.005
         smoothing: True
-        save_steps: 500
-        #save_steps: 50
-
-nn_params:
-        layers: [128, 128, 128]
-        activation: 'relu'
-        dropout: 0.1
+        save_steps: 1000
+        goal_vertices: 0.95
+        plot_dir: ''
+        target_update: 50
+        num_workers: 1
+        num_parallel: 12
+        #num_parallel: 1
 optimizer:
-        name: 'adam'
-        lr: 1e-3
+        #lr: 5e-4
+        #lr: 1e-4
+        lr: 1e-5
+        #weight_decay: 0
         weight_decay: 1e-6
-
+        batch_size: 32
+        #batch_size: 64
+epsilon:
+        #decay: 100000
+        decay: 10000
+        start: 1.
+        end: 0.01
+        gamma: 1.
 
