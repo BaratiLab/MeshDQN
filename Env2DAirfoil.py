@@ -39,7 +39,7 @@ else:
 device = torch.device("cpu")
 
 #@ray.remote
-class ParallelMultiSnapshotEnv2DAirfoil(Env):
+class Env2DAirfoil(Env):
     """
         Environment to optimize mesh around a 2D airfoil
     """

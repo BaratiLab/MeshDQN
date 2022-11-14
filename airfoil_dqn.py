@@ -9,11 +9,10 @@ import ray
 from ray.air.config import ScalingConfig
 from ray.train.torch import TorchTrainer
 from ray.tune.registry import register_env
-from ParallelMultiSnapshotEnv2DAirfoil import ParallelMultiSnapshotEnv2DAirfoil as Env2DAirfoil
+from Env2DAirfoil import Env2DAirfoil
 from parallel_airfoilgcnn import NodeRemovalNet
 from tqdm import tqdm
 import time
-#from dolfin import *
 from itertools import count
 import random
 import numpy as np
