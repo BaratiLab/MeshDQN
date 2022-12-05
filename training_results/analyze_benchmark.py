@@ -9,8 +9,8 @@ import os
 from matplotlib.ticker import FormatStrFormatter
 
 SHOW_INTERPOLATION = True
-#save_dir = "ys930_ray_scheduler"
-save_dir = "ah93w145_ray_scheduler"
+save_dir = "ys930_results"
+#save_dir = "ah93w145_results"
 
 ys930 = "ys930" in save_dir
 s1020 = "e654" in save_dir

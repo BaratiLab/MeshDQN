@@ -344,15 +344,8 @@ def optimize_model():
 RESTART = False
 
 # Prefix used for saving results
-#PREFIX = 's1020_ray_scheduler_'
-#PREFIX = 'lwk80120k25_ray_scheduler_'
-#PREFIX = 'nlf415_ray_scheduler_'
-
-#PREFIX = 'ys930_ray_scheduler_'
-#PREFIX = 'ah93w145_ray_scheduler_'
-#PREFIX = 'rg1495_ray_scheduler_'
-#PREFIX = 'rg1495_regular_ray_scheduler_'
-PREFIX = 'cylinder_ray_scheduler_'
+PREFIX = 'ys930_results_'
+#PREFIX = 'ah93w145_results_'
 
 # Save directory
 save_dir = 'training_results'

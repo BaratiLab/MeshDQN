@@ -67,30 +67,8 @@ end_plots = True
 # Try this next
 use_best = False
 
-#obj = 'cylinder_multi'
-#obj = 'ys930_5000K'
-#obj = 'ag11'
-#obj = 'ys930_691K'
-#obj = 'ys930_multi'
-#obj = 'ys930_691K'
-#obj = 'ys930_50K'
-#obj = 'lwk80120k25_13'
-#obj = 'lwk80120k25_ray_scheduler'
-
-
-#obj = 's1020_ray_scheduler'
-#obj = 'nlf415_ray_scheduler'
-
-#obj = 'ys930_ray_scheduler'
-#obj = 'ah93w145_ray_scheduler'
-
-#obj = 'rg1495_ray_scheduler'
-#obj = 'rg1495_mega_parallel'
-#obj = 'rg1495_regular_ray_scheduler'
-
-#obj = 'cylinder_mega_parallel'
-obj = 'e654_mega_parallel'
-#obj = 'cylinder_mega_paralleler'
+obj = 'ys930_results'
+#obj = 'ah93w145_results'
 
 RESTART = False
 CONFIRM = False

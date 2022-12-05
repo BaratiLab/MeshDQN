@@ -175,8 +175,8 @@ def plot(PREFIX):
     #plt.show()
         
 ps = [
-    #'ys930_ray_scheduler',
-    'ah93w145_ray_scheduler',
+    'ys930_results',
+    #'ah93w145_results'
 ]
 for p in ps:
     plot(p)
