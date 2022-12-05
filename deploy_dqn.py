@@ -21,13 +21,8 @@ SURROGATE_MODEL = False
 MULTI_SNAPSHOT = True
 
 # TODO: These are misnomers
-from parallel_airfoilgcnn import AirfoilGCNN, NodeRemovalNet
-#if(not SURROGATE_MODEL):
-from ParallelMultiSnapshotEnv2DAirfoil import ParallelMultiSnapshotEnv2DAirfoil as Env2DAirfoil
-#elif(MULTI_SNAPSHOT):
-#    from OnlineInterpolationEnv2DAirfoil import OnlineInterpolationEnv2DAirfoil as Env2DAirfoil
-#else:
-#    from Env2DAirfoil import Env2DAirfoil
+from airfoilgcnn import NodeRemovalNet
+from Env2DAirfoil import Env2DAirfoil
 
 from itertools import count
 

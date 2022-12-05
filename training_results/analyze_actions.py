@@ -3,7 +3,7 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 
 RESTART = False
-VERBOSE = 1
+VERBOSE = 3
 
 def plot(PREFIX):
     if(RESTART):
@@ -140,7 +140,10 @@ def plot(PREFIX):
     _, counts = np.unique(np.hstack(actions), return_counts=True)
     percents = counts / sum(counts)
     #print("200 STEP WINDOW LOSS: {} AT STEP: {}".format(_movingaverage(losses, 200)[-1], len(losses)))
-    print("5000 STEP WINDOW LOSS: {} AT STEP: {}".format(_movingaverage(losses, 5000)[-1], len(losses)))
+    try:
+        print("5000 STEP WINDOW LOSS: {} AT STEP: {}".format(_movingaverage(losses, 5000)[-1], len(losses)))
+    except ValueError:
+        pass
     print("DO NOTHING PERCENT: {}, MEDIAN: {}".format(100*percents[-1], np.median(100*percents)))
     print("DO NOTHING RATIO: {}".format(100*percents[-1]/np.median(100*percents)))
     print("DO NOTHING NUMBER: {}".format(counts[-1]))
@@ -180,6 +183,4 @@ ps = [
 ]
 for p in ps:
     plot(p)
-    print()
-    print()
 

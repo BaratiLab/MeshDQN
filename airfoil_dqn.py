@@ -2,15 +2,14 @@ import torch
 import os
 import sys
 import yaml
-from ray_dqn import DQNConfig
-from ray import tune, air, train
-from ray.air import session, Checkpoint
+#from ray import tune, air, train
+#from ray.air import session, Checkpoint
 import ray
 from ray.air.config import ScalingConfig
 from ray.train.torch import TorchTrainer
 from ray.tune.registry import register_env
 from Env2DAirfoil import Env2DAirfoil
-from parallel_airfoilgcnn import NodeRemovalNet
+from airfoilgcnn import NodeRemovalNet
 from tqdm import tqdm
 import time
 from itertools import count
@@ -77,7 +76,7 @@ def _movingaverage(values, window):
 @ray.remote
 class DataHandler(object):
     def __init__(self, save_dir):
-        from parallel_airfoilgcnn import NodeRemovalNet
+        from airfoilgcnn import NodeRemovalNet
         self.save_dir = save_dir
         self.rewards = []
         self.ep_rewards = []
@@ -214,9 +213,9 @@ class ParameterServer(object):
 
     def write(self):
         torch.save(self.policy_net_1.state_dict(),
-                    "/home/fenics/drl_projects/MeshDQN/parallel_training/{}/{}policy_net_1.pt".format(self.save_dir, self.PREFIX))
+                    "/home/fenics/drl_projects/MeshDQN/{}/{}policy_net_1.pt".format(self.save_dir, self.PREFIX))
         torch.save(self.policy_net_2.state_dict(),
-                    "/home/fenics/drl_projects/MeshDQN/parallel_training/{}/{}policy_net_2.pt".format(self.save_dir, self.PREFIX))
+                    "/home/fenics/drl_projects/MeshDQN/{}/{}policy_net_2.pt".format(self.save_dir, self.PREFIX))
 
 
 @ray.remote
@@ -366,7 +365,7 @@ if(RESTART):
         RESTART_NUM += int("{}policy_net_1.pt".format(PREFIX) in f)
     print("\n\nRESTART NUM: {}\n\n".format(RESTART_NUM))
 else:
-    with open("../configs/ray_{}.yaml".format(PREFIX.split("_")[0]), 'r') as stream:
+    with open("./configs/ray_{}.yaml".format(PREFIX.split("_")[0]), 'r') as stream:
         flow_config = yaml.safe_load(stream)
 
 # Hyperparameters to tune
@@ -413,7 +412,7 @@ except:
 memory = ReplayMemory.remote(10000)
 #memory = ReplayMemory.remote(20000)
 #memory = ReplayMemory.remote(50000)
-save_str = "/home/fenics/drl_projects/MeshDQN/parallel_training/{}/{}".format(save_dir, PREFIX)
+save_str = "/home/fenics/drl_projects/MeshDQN/{}/{}".format(save_dir, PREFIX)
 handler = DataHandler.remote(save_str)
 
 print("Running Asynchronous Parameter Server Training.")

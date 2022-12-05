@@ -13,11 +13,11 @@ save_dir = "ys930_results"
 #save_dir = "ah93w145_results"
 
 ys930 = "ys930" in save_dir
-s1020 = "e654" in save_dir
+s1020 = False
 #s1020 = "ah93w145" in save_dir
 FINAL_IDX = -1
-RESTART = True
-FINAL = True
+RESTART = False
+FINAL = False
 
 # New ys930 drag trajectory plots
 if(True):
