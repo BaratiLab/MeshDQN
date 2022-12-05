@@ -6,10 +6,9 @@ For more details about the method, please read the [paper]().
 
 ## Running MeshDQN
 
-MeshDQN is supported on [docker](https://www.docker.com/).
-
-Running the docker for MeshDQN image can be done simply as:
-`docker run -v /[path]/[to]/[parent]/[directory]/:/home/fenics/ -ti quay.io/fenicsproject/stable:meshdqn`
+MeshDQN is supported on [docker](https://www.docker.com/). In order to run MeshDQN an account must be created there first.
+The Docker image can be downloaded from the command line with `docker pull cooplo/meshdqn:latest`.
+Running the image is then: `docker run -v /[path]/[to]/[parent]/[directory]/:/home/fenics/ -ti cooplo/meshdqn:latest`
 
 The config files for various runs are found in the `configs/` directory, with accompanying airfoil files found in the `xdmf_files/` directory.
 Data for the results in the paper are provided here.
