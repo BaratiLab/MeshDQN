@@ -41,6 +41,23 @@ After deployment, the results figures from the paper can be generated with `anal
 
 ## Evaluation
 
-If you use MeshDQN, please cite as: [AVAILABLE TOMORROW]
+If you use MeshDQN, please cite as: 
+```
+@article{10.1063/5.0138039,
+    author = {Lorsung, Cooper and Barati Farimani, Amir},
+    title = "{Mesh deep Q network: A deep reinforcement learning framework for improving meshes in computational fluid dynamics}",
+    journal = {AIP Advances},
+    volume = {13},
+    number = {1},
+    year = {2023},
+    month = {01},
+    abstract = "{Meshing is a critical, but user-intensive process necessary for stable and accurate simulations in computational fluid dynamics (CFD). Mesh generation is often a bottleneck in CFD pipelines. Adaptive meshing techniques allow the mesh to be updated automatically to produce an accurate solution for the problem at hand. Existing classical techniques for adaptive meshing require either additional functionality out of solvers, many training simulations, or both. Current machine learning techniques often require substantial computational cost for training data generation, and are restricted in scope to the training data flow regime. Mesh Deep Q Network (MeshDQN) is developed as a general purpose deep reinforcement learning framework to iteratively coarsen meshes while preserving target property calculation. A graph neural network based deep Q network is used to select mesh vertices for removal and solution interpolation is used to bypass expensive simulations at each step in the improvement process. MeshDQN requires a single simulation prior to mesh coarsening, while making no assumptions about flow regime, mesh type, or solver, only requiring the ability to modify meshes directly in a CFD pipeline. MeshDQN successfully improves meshes for two 2D airfoils.}",
+    issn = {2158-3226},
+    doi = {10.1063/5.0138039},
+    url = {https://doi.org/10.1063/5.0138039},
+    note = {015026},
+    eprint = {https://pubs.aip.org/aip/adv/article-pdf/doi/10.1063/5.0138039/16698492/015026\_1\_online.pdf},
+}
+```
 
 
