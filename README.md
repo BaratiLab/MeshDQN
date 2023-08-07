@@ -2,7 +2,7 @@
 Welcome to MeshDQN, the official repository.
 
 MeshDQN uses double deep Q learning to iteratively coarsen meshes in computational fluid dynamics.
-For more details about the method, please read the [paper]().
+For more details about the method, please read the [paper](https://pubs.aip.org/aip/adv/article/13/1/015026/2871176/Mesh-deep-Q-network-A-deep-reinforcement-learning).
 
 ## Running MeshDQN
 
